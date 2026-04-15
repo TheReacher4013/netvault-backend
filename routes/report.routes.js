@@ -1,0 +1,11 @@
+// report.routes.js
+const express = require('express');
+const router = express.Router();
+const protect = require('../middleware/auth.middleware');
+const ctrl = require('../controllers/report.controller');
+router.use(protect);
+router.get('/renewals', ctrl.getRenewalReport);
+router.get('/revenue', ctrl.getRevenueReport);
+router.get('/status-overview', ctrl.getStatusOverview);
+router.get('/client/:id', ctrl.getClientReport);
+module.exports = router;

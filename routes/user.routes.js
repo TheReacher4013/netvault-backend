@@ -1,0 +1,14 @@
+const express = require('express');
+const router = express.Router();
+const protect = require('../middleware/auth.middleware');
+const checkRole = require('../middleware/role.middleware');
+const ctrl = require('../controllers/user.controller');
+router.use(protect);
+router.get('/profile', ctrl.getProfile);
+router.put('/profile', ctrl.updateProfile);
+router.get('/', checkRole('admin', 'superAdmin'), ctrl.getUsers);
+router.post('/', checkRole('admin', 'superAdmin'), ctrl.addUser);
+router.patch('/:id/role', checkRole('admin', 'superAdmin'), ctrl.updateRole);
+router.patch('/:id/toggle-active', checkRole('admin', 'superAdmin'), ctrl.toggleActive);
+router.delete('/:id', checkRole('admin', 'superAdmin'), ctrl.deleteUser);
+module.exports = router;

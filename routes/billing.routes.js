@@ -1,0 +1,14 @@
+const express = require('express');
+const router = express.Router();
+const protect = require('../middleware/auth.middleware');
+const checkRole = require('../middleware/role.middleware');
+const ctrl = require('../controllers/billing.controller');
+router.use(protect);
+router.get('/summary', ctrl.getBillingSummary);
+router.get('/invoices', ctrl.getInvoices);
+router.post('/invoices', checkRole('admin', 'staff'), ctrl.createInvoice);
+router.get('/invoices/:id', ctrl.getInvoice);
+router.patch('/invoices/:id/status', checkRole('admin', 'staff'), ctrl.updateInvoiceStatus);
+router.get('/invoices/:id/pdf', ctrl.downloadPDF);
+router.delete('/invoices/:id', checkRole('admin'), ctrl.deleteInvoice);
+module.exports = router;

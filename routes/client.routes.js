@@ -1,0 +1,17 @@
+const express = require('express');
+const router = express.Router();
+const protect = require('../middleware/auth.middleware');
+const checkRole = require('../middleware/role.middleware');
+const ctrl = require('../controllers/client.controller');
+router.use(protect);
+router.get('/', ctrl.getClients);
+router.post('/', ctrl.addClient);
+router.get('/:id', ctrl.getClient);
+router.put('/:id', ctrl.updateClient);
+router.delete('/:id', checkRole('admin', 'superAdmin'), ctrl.deleteClient);
+router.get('/:id/assets', ctrl.getClientAssets);
+router.post('/:id/notes', ctrl.addNote);
+router.post('/:id/credentials', checkRole('admin', 'staff'), ctrl.addCredential);
+router.get('/:id/credentials', checkRole('admin', 'staff'), ctrl.getCredentials);
+router.delete('/:id/credentials/:credId', checkRole('admin'), ctrl.deleteCredential);
+module.exports = router;

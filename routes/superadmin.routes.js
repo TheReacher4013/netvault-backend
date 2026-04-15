@@ -1,0 +1,15 @@
+const express = require('express');
+const router = express.Router();
+const protect = require('../middleware/auth.middleware');
+const checkRole = require('../middleware/role.middleware');
+const ctrl = require('../controllers/superadmin.controller');
+router.use(protect, checkRole('superAdmin'));
+router.get('/stats', ctrl.getPlatformStats);
+router.get('/tenants', ctrl.getTenants);
+router.get('/tenants/:id', ctrl.getTenant);
+router.patch('/tenants/:id/plan', ctrl.updateTenantPlan);
+router.patch('/tenants/:id/toggle', ctrl.toggleTenant);
+router.get('/plans', ctrl.getPlans);
+router.post('/plans', ctrl.createPlan);
+router.put('/plans/:id', ctrl.updatePlan);
+module.exports = router;
