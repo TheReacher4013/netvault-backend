@@ -28,10 +28,21 @@ exports.getDomains = async (req, res, next) => {
 // @POST /api/domains
 exports.addDomain = async (req, res, next) => {
   try {
-    const domain = await Domain.create({ ...req.body, tenantId: req.tenantId });
+    // ✅ Whitelist only safe fields — tenantId always comes from req.tenantId
+    const {
+      name, registrar, registrationDate, expiryDate, clientId,
+      autoRenewal, isLive, nameservers, whois, notes, tags,
+      renewalCost, sellingPrice,
+    } = req.body;
+
+    const domain = await Domain.create({
+      name, registrar, registrationDate, expiryDate, clientId,
+      autoRenewal, isLive, nameservers, whois, notes, tags,
+      renewalCost, sellingPrice,
+      tenantId: req.tenantId, // always from auth, never from body
+    });
     await domain.populate('clientId', 'name email');
 
-    // Notify
     await Notification.create({
       tenantId: req.tenantId,
       type: 'info',
@@ -60,10 +71,27 @@ exports.getDomain = async (req, res, next) => {
 // @PUT /api/domains/:id
 exports.updateDomain = async (req, res, next) => {
   try {
+    // ✅ FIX (Bug #5): Whitelist allowed fields explicitly.
+    // Previously `req.body` was spread directly, allowing an attacker to
+    // overwrite tenantId, status, or alertsSent via the request body.
+    const {
+      name, registrar, registrationDate, expiryDate,
+      autoRenewal, isLive, nameservers, whois, notes,
+      tags, renewalCost, sellingPrice, clientId,
+      transferStatus, subdomains,
+    } = req.body;
+
     const domain = await Domain.findOneAndUpdate(
       { _id: req.params.id, tenantId: req.tenantId },
-      req.body, { new: true, runValidators: true }
+      {
+        name, registrar, registrationDate, expiryDate,
+        autoRenewal, isLive, nameservers, whois, notes,
+        tags, renewalCost, sellingPrice, clientId,
+        transferStatus, subdomains,
+      },
+      { new: true, runValidators: true }
     ).populate('clientId', 'name email');
+
     if (!domain) return error(res, 'Domain not found', 404);
     return success(res, { domain }, 'Domain updated');
   } catch (err) { next(err); }
@@ -133,27 +161,56 @@ exports.deleteDNSRecord = async (req, res, next) => {
 exports.importDomainsCSV = async (req, res, next) => {
   try {
     if (!req.file) return error(res, 'No CSV file uploaded', 400);
+
     const results = [];
+    let responded = false; // guard against double-response
+
+    // ✅ FIX (Bug #9): Added `.on('error')` handler.
+    // Previously, if the file stream errored (bad path, disk issue),
+    // the request would hang indefinitely with no response.
     fs.createReadStream(req.file.path)
       .pipe(csv())
       .on('data', (row) => results.push(row))
+      .on('error', (streamErr) => {
+        if (responded) return;
+        responded = true;
+        // Clean up temp file
+        if (fs.existsSync(req.file.path)) {
+          try { fs.unlinkSync(req.file.path); } catch (_) { }
+        }
+        next(streamErr);
+      })
       .on('end', async () => {
+        if (responded) return;
+        responded = true;
+
         const created = [];
         const errors = [];
+
         for (const row of results) {
           try {
+            const expiryRaw = row.expiryDate || row.expiry;
+            if (!expiryRaw) {
+              errors.push({ name: row.name || row.domain, error: 'Missing expiry date' });
+              continue;
+            }
             const doc = await Domain.create({
-              name: row.name || row.domain,
+              name: (row.name || row.domain || '').toLowerCase().trim(),
               registrar: row.registrar,
-              expiryDate: new Date(row.expiryDate || row.expiry),
+              expiryDate: new Date(expiryRaw),
               tenantId: req.tenantId,
             });
             created.push(doc.name);
           } catch (e) {
-            errors.push({ name: row.name, error: e.message });
+            errors.push({ name: row.name || row.domain, error: e.message });
           }
         }
-        fs.unlinkSync(req.file.path);
+
+        // Always clean up the temp file
+        if (fs.existsSync(req.file.path)) {
+          try { fs.unlinkSync(req.file.path); } catch (_) { }
+        }
+
         return success(res, { imported: created.length, errors }, `${created.length} domains imported`);
       });
   } catch (err) { next(err); }

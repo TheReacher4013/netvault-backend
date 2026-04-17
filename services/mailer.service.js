@@ -1,16 +1,37 @@
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 
-const createTransporter = () => nodemailer.createTransport({
-  host: process.env.MAIL_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.MAIL_PORT) || 587,
-  secure: false,
-  auth: { user: process.env.MAIL_USER, pass: process.env.MAIL_PASS },
-});
+// ✅ FIX (Bug #12): Create transporter once as a singleton and reuse it.
+// Original code called createTransporter() inside every sendMail() call,
+// establishing a brand-new TCP connection to the SMTP server for every single
+// email. Under cron-triggered bursts (30+ expiry alerts at once), this hammers
+// the SMTP server and can cause connection timeouts.
+//
+// Using pool:true lets nodemailer manage a connection pool internally.
+let _transporter = null;
+
+const getTransporter = () => {
+  if (!_transporter) {
+    _transporter = nodemailer.createTransport({
+      host: process.env.MAIL_HOST || 'smtp.gmail.com',
+      port: parseInt(process.env.MAIL_PORT) || 587,
+      secure: process.env.MAIL_SECURE === 'true', // true for port 465
+      auth: {
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASS,
+      },
+      pool: true,           // reuse connections
+      maxConnections: 5,    // max simultaneous SMTP connections
+      rateDelta: 1000,      // throttle: max rateLimit emails per rateDelta ms
+      rateLimit: 10,        // max 10 emails per second
+    });
+  }
+  return _transporter;
+};
 
 const sendMail = async (to, subject, html) => {
   try {
-    const transporter = createTransporter();
+    const transporter = getTransporter();
     await transporter.sendMail({
       from: process.env.MAIL_FROM || 'NetVault <noreply@netvault.app>',
       to, subject, html,
@@ -18,8 +39,15 @@ const sendMail = async (to, subject, html) => {
     logger.info(`Email sent to ${to}: ${subject}`);
   } catch (err) {
     logger.error(`Email failed to ${to}: ${err.message}`);
+    // On connection-level errors, reset transporter so it rebuilds on next call
+    if (['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED'].includes(err.code)) {
+      _transporter = null;
+    }
+    // Don't re-throw — email failures should not crash the caller
   }
 };
+
+// ── Email Templates ──────────────────────────────────────────────────────────
 
 const baseTemplate = (content) => `
 <!DOCTYPE html>

@@ -27,7 +27,13 @@ exports.getClients = async (req, res, next) => {
 // @POST /api/clients
 exports.addClient = async (req, res, next) => {
   try {
-    const client = await Client.create({ ...req.body, tenantId: req.tenantId });
+    // ✅ Whitelist fields on create too — never trust full req.body spread
+    const { name, email, phone, company, address, tags } = req.body;
+    const client = await Client.create({
+      name, email, phone, company, address, tags,
+      tenantId: req.tenantId,
+    });
+
     await Notification.create({
       tenantId: req.tenantId,
       type: 'new_client',
@@ -35,6 +41,7 @@ exports.addClient = async (req, res, next) => {
       message: `Client ${client.name} has been added.`,
       entityId: client._id, entityType: 'client', severity: 'info',
     });
+
     const io = req.app.get('io');
     io?.to(`tenant-${req.tenantId}`).emit('client-added', client);
     return success(res, { client }, 'Client added', 201);
@@ -53,9 +60,15 @@ exports.getClient = async (req, res, next) => {
 // @PUT /api/clients/:id
 exports.updateClient = async (req, res, next) => {
   try {
+    // ✅ FIX (Bug #5): Whitelist allowed fields explicitly.
+    // Previously req.body was spread directly into findOneAndUpdate,
+    // allowing a user to inject tenantId or isActive=false to corrupt the record.
+    const { name, email, phone, company, address, tags, isActive } = req.body;
+
     const client = await Client.findOneAndUpdate(
       { _id: req.params.id, tenantId: req.tenantId },
-      req.body, { new: true, runValidators: true }
+      { name, email, phone, company, address, tags, isActive },
+      { new: true, runValidators: true }
     );
     if (!client) return error(res, 'Client not found', 404);
     return success(res, { client }, 'Client updated');
@@ -90,7 +103,8 @@ exports.addNote = async (req, res, next) => {
   try {
     const client = await Client.findOne({ _id: req.params.id, tenantId: req.tenantId });
     if (!client) return error(res, 'Client not found', 404);
-    client.notes.push({ content: req.body.content, addedBy: req.user._id });
+    if (!req.body.content?.trim()) return error(res, 'Note content is required', 400);
+    client.notes.push({ content: req.body.content.trim(), addedBy: req.user._id });
     await client.save();
     return success(res, { notes: client.notes }, 'Note added');
   } catch (err) { next(err); }
@@ -106,7 +120,7 @@ exports.addCredential = async (req, res, next) => {
       tenantId: req.tenantId,
       addedBy: req.user._id,
     });
-    cred.data = data;
+    cred.data = data; // triggers virtual setter → AES-256 encryption
     await cred.save();
     return success(res, { credentialId: cred._id }, 'Credential stored securely', 201);
   } catch (err) { next(err); }
@@ -121,10 +135,15 @@ exports.getCredentials = async (req, res, next) => {
       .populate('addedBy', 'name');
 
     const decrypted = creds.map(c => ({
-      _id: c._id, label: c.label, type: c.type,
-      data: c.toObject().data,
-      notes: c.notes, addedBy: c.addedBy, createdAt: c.createdAt,
-      hostingId: c.hostingId, domainId: c.domainId,
+      _id: c._id,
+      label: c.label,
+      type: c.type,
+      data: c.toObject().data, // triggers virtual getter → AES-256 decryption
+      notes: c.notes,
+      addedBy: c.addedBy,
+      createdAt: c.createdAt,
+      hostingId: c.hostingId,
+      domainId: c.domainId,
     }));
     return success(res, { credentials: decrypted });
   } catch (err) { next(err); }
@@ -134,7 +153,9 @@ exports.getCredentials = async (req, res, next) => {
 exports.deleteCredential = async (req, res, next) => {
   try {
     const cred = await Credential.findOneAndDelete({
-      _id: req.params.credId, clientId: req.params.id, tenantId: req.tenantId,
+      _id: req.params.credId,
+      clientId: req.params.id,
+      tenantId: req.tenantId,
     });
     if (!cred) return error(res, 'Credential not found', 404);
     return success(res, {}, 'Credential deleted');

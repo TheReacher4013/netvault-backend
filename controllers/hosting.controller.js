@@ -1,8 +1,13 @@
 const Hosting = require('../models/Hosting.model');
 const { UptimeLog, Notification } = require('../models/index');
-const { encryptData, decryptData } = require('../services/encrypt.service');
 const { success, error } = require('../utils/apiResponse');
-const axios = require('axios');
+
+// Helper: strip the encrypted blob before sending to client
+const safeHosting = (hostingDoc) => {
+  const obj = hostingDoc.toJSON();
+  delete obj._cpanelInfoEncrypted; // ✅ FIX (Bug #4): always strip this field
+  return obj;
+};
 
 // @GET /api/hosting
 exports.getHosting = async (req, res, next) => {
@@ -19,6 +24,12 @@ exports.getHosting = async (req, res, next) => {
       populate: { path: 'clientId', select: 'name email' },
     };
     const result = await Hosting.paginate(query, options);
+
+    // Strip encrypted field from every doc in the paginated result
+    if (result.docs) {
+      result.docs = result.docs.map(safeHosting);
+    }
+
     return success(res, result);
   } catch (err) { next(err); }
 };
@@ -27,11 +38,14 @@ exports.getHosting = async (req, res, next) => {
 exports.addHosting = async (req, res, next) => {
   try {
     const { cpanelInfo, ...rest } = req.body;
-    const hosting = new Hosting({ ...rest, tenantId: req.tenantId });
-    if (cpanelInfo) hosting.cpanelInfo = cpanelInfo;
+
+    // ✅ Whitelist protected fields
+    const { tenantId: _t, ...safeRest } = rest; // prevent body tenantId injection
+    const hosting = new Hosting({ ...safeRest, tenantId: req.tenantId });
+    if (cpanelInfo) hosting.cpanelInfo = cpanelInfo; // goes through virtual setter → encrypted
     await hosting.save();
     await hosting.populate('clientId', 'name email');
-    return success(res, { hosting }, 'Hosting added', 201);
+    return success(res, { hosting: safeHosting(hosting) }, 'Hosting added', 201);
   } catch (err) { next(err); }
 };
 
@@ -41,23 +55,23 @@ exports.getHostingById = async (req, res, next) => {
     const hosting = await Hosting.findOne({ _id: req.params.id, tenantId: req.tenantId })
       .populate('clientId', 'name email phone');
     if (!hosting) return error(res, 'Hosting not found', 404);
-    // Don't expose encrypted creds in normal GET
-    const hostingObj = hosting.toJSON();
-    delete hostingObj._cpanelInfoEncrypted;
-    return success(res, { hosting: hostingObj });
+    return success(res, { hosting: safeHosting(hosting) });
   } catch (err) { next(err); }
 };
 
 // @PUT /api/hosting/:id
 exports.updateHosting = async (req, res, next) => {
   try {
-    const { cpanelInfo, ...rest } = req.body;
+    const { cpanelInfo, tenantId: _t, ...rest } = req.body; // strip tenantId injection
     const hosting = await Hosting.findOne({ _id: req.params.id, tenantId: req.tenantId });
     if (!hosting) return error(res, 'Hosting not found', 404);
     Object.assign(hosting, rest);
     if (cpanelInfo) hosting.cpanelInfo = cpanelInfo;
     await hosting.save();
-    return success(res, { hosting: hosting.toJSON() }, 'Hosting updated');
+
+    // ✅ FIX (Bug #4): Use safeHosting() — previously toJSON() without delete
+    // was leaking _cpanelInfoEncrypted in the update response
+    return success(res, { hosting: safeHosting(hosting) }, 'Hosting updated');
   } catch (err) { next(err); }
 };
 
@@ -70,11 +84,12 @@ exports.deleteHosting = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// @GET /api/hosting/:id/credentials  — Decrypt and return cPanel info
+// @GET /api/hosting/:id/credentials  — Decrypt and return cPanel info (admin only)
 exports.getCredentials = async (req, res, next) => {
   try {
     const hosting = await Hosting.findOne({ _id: req.params.id, tenantId: req.tenantId });
     if (!hosting) return error(res, 'Hosting not found', 404);
+    // .toObject() triggers the virtual getter which decrypts
     const creds = hosting.toObject().cpanelInfo;
     if (!creds) return error(res, 'No credentials stored', 404);
     return success(res, { credentials: creds });
@@ -87,10 +102,9 @@ exports.getSSLStatus = async (req, res, next) => {
     const hosting = await Hosting.findOne({ _id: req.params.id, tenantId: req.tenantId });
     if (!hosting) return error(res, 'Hosting not found', 404);
     const ssl = hosting.ssl;
-    const now = new Date();
     let daysLeft = null;
     if (ssl.expiryDate) {
-      daysLeft = Math.ceil((ssl.expiryDate - now) / (1000 * 60 * 60 * 24));
+      daysLeft = Math.ceil((ssl.expiryDate - new Date()) / (1000 * 60 * 60 * 24));
     }
     return success(res, { ssl, daysLeft });
   } catch (err) { next(err); }

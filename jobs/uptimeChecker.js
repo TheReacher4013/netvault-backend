@@ -5,6 +5,26 @@ const { UptimeLog, Notification } = require('../models/index');
 const User = require('../models/User.model');
 const mailerService = require('../services/mailer.service');
 const logger = require('../utils/logger');
+// ✅ FIX (Bug #2): Use the socket singleton instead of require('../server').
+// server.js requires this file at startup, so require('../server') created a
+// circular dependency — Node returned a partial exports object where `io`
+// was always undefined. Socket DOWN events silently never fired.
+const { getIO } = require('../utils/socket');
+
+// Simple concurrency limiter (avoids installing p-limit just for this)
+const runWithConcurrency = async (tasks, limit = 10) => {
+  const results = [];
+  const executing = new Set();
+  for (const task of tasks) {
+    const p = Promise.resolve().then(() => task()).finally(() => executing.delete(p));
+    results.push(p);
+    executing.add(p);
+    if (executing.size >= limit) {
+      await Promise.race(executing);
+    }
+  }
+  return Promise.allSettled(results);
+};
 
 // Runs every 5 minutes
 cron.schedule('*/5 * * * *', async () => {
@@ -12,21 +32,24 @@ cron.schedule('*/5 * * * *', async () => {
     const hostingList = await Hosting.find({ 'uptime.monitorEnabled': true })
       .select('_id label serverIP tenantId uptime clientId');
 
-    for (const hosting of hostingList) {
-      await pingServer(hosting);
-    }
+    if (hostingList.length === 0) return;
+
+    // ✅ FIX (Bug #14): Run pings in parallel with a concurrency cap of 10.
+    // Original used for...of with await — 100 hosts × 10s timeout = 1000s per run,
+    // causing cron jobs to pile up. Now all pings run concurrently (max 10 at once).
+    await runWithConcurrency(
+      hostingList.map(hosting => () => pingServer(hosting)),
+      10
+    );
   } catch (err) {
     logger.error(`Uptime checker error: ${err.message}`);
   }
 });
 
 const pingServer = async (hosting) => {
-  const url = hosting.serverIP
-    ? `http://${hosting.serverIP}`
-    : null;
+  if (!hosting.serverIP) return;
 
-  if (!url) return;
-
+  const url = `http://${hosting.serverIP}`;
   const startTime = Date.now();
   let status = 'down';
   let responseTime = null;
@@ -34,16 +57,20 @@ const pingServer = async (hosting) => {
   let errorMsg = null;
 
   try {
-    const response = await axios.get(url, { timeout: 10000, validateStatus: () => true });
+    const response = await axios.get(url, {
+      timeout: 10000,
+      validateStatus: () => true, // don't throw on non-2xx
+    });
     statusCode = response.status;
     responseTime = Date.now() - startTime;
+    // Treat anything below 500 as "up" (site might return 301, 401, etc.)
     status = response.status < 500 ? 'up' : 'down';
   } catch (err) {
     errorMsg = err.message;
     status = 'down';
   }
 
-  // Save log
+  // Save uptime log entry
   await UptimeLog.create({
     hostingId: hosting._id,
     tenantId: hosting.tenantId,
@@ -55,7 +82,7 @@ const pingServer = async (hosting) => {
   const wasDown = hosting.uptime.currentStatus === 'down';
   const isNowDown = status === 'down';
 
-  // Update hosting uptime status
+  // Recalculate uptime% from last 100 pings
   const recentLogs = await UptimeLog.find({ hostingId: hosting._id })
     .sort({ checkedAt: -1 }).limit(100);
   const upCount = recentLogs.filter(l => l.status === 'up').length;
@@ -67,7 +94,7 @@ const pingServer = async (hosting) => {
     'uptime.uptimePercent': parseFloat(uptimePercent.toFixed(2)),
   });
 
-  // Alert if just went down
+  // Alert when server just went DOWN (transition: up → down)
   if (isNowDown && !wasDown) {
     logger.warn(`Server DOWN: ${hosting.label} (${hosting.serverIP})`);
 
@@ -87,8 +114,9 @@ const pingServer = async (hosting) => {
         severity: 'danger',
       });
 
-      // Emit real-time socket event
-      const { io } = require('../server');
+      // ✅ FIX (Bug #2): getIO() returns the io instance registered by server.js
+      // via setIO(). No circular dependency — io is always available here.
+      const io = getIO();
       io?.to(`tenant-${hosting.tenantId}`).emit('server-down', {
         hostingId: hosting._id,
         label: hosting.label,
@@ -96,22 +124,34 @@ const pingServer = async (hosting) => {
         timestamp: new Date(),
       });
     } catch (err) {
-      logger.error(`Failed to send down alert for ${hosting.label}: ${err.message}`);
+      logger.error(`Failed to send DOWN alert for ${hosting.label}: ${err.message}`);
     }
   }
 
-  // Alert when back up
+  // Notify when server RECOVERED (transition: down → up)
   if (!isNowDown && wasDown) {
     logger.info(`Server RECOVERED: ${hosting.label}`);
-    await Notification.create({
-      tenantId: hosting.tenantId,
-      type: 'info',
-      title: `Server Recovered: ${hosting.label}`,
-      message: `${hosting.label} is back online`,
-      entityId: hosting._id,
-      entityType: 'hosting',
-      severity: 'success',
-    });
+
+    try {
+      await Notification.create({
+        tenantId: hosting.tenantId,
+        type: 'info',
+        title: `Server Recovered: ${hosting.label}`,
+        message: `${hosting.label} is back online`,
+        entityId: hosting._id,
+        entityType: 'hosting',
+        severity: 'success',
+      });
+
+      const io = getIO();
+      io?.to(`tenant-${hosting.tenantId}`).emit('server-up', {
+        hostingId: hosting._id,
+        label: hosting.label,
+        timestamp: new Date(),
+      });
+    } catch (err) {
+      logger.error(`Failed to send RECOVERY notification for ${hosting.label}: ${err.message}`);
+    }
   }
 };
 

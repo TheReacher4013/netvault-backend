@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const User = require('../models/User.model');
 const Tenant = require('../models/Tenant.model');
 const generateToken = require('../utils/generateToken');
@@ -14,29 +15,44 @@ exports.register = async (req, res, next) => {
     const existing = await User.findOne({ email });
     if (existing) return error(res, 'Email already registered', 400);
 
-    // Create tenant first
-    // const tenant = await Tenant.create({ orgName, adminId: null });
-    const placeholderId = new require('mongoose').Types.ObjectId();
-    const tenant = await Tenant.create({ orgName, adminId: placeholderId });
+    // ✅ FIX (Bug #1): Original code did Tenant.create({ adminId: null }) but
+    // adminId is required:true in TenantSchema → always threw ValidationError.
+    //
+    // Correct order:
+    //   1. Create user with a temp tenantId placeholder
+    //   2. Create tenant with the real user._id as adminId
+    //   3. Patch user.tenantId to the real tenant._id
 
-    // Create admin user
+    // Step 1: Create user (tenantId is a placeholder, overwritten in step 3)
     const user = await User.create({
       name, email, password, phone,
       role: 'admin',
-      tenantId: tenant._id,
+      tenantId: new mongoose.Types.ObjectId(), // temporary, replaced below
     });
 
-    // Link admin to tenant
-    tenant.adminId = user._id;
-    await tenant.save();
+    // Step 2: Create tenant — adminId now has a real value
+    const tenant = await Tenant.create({ orgName, adminId: user._id });
+
+    // Step 3: Link user to the real tenant
+    user.tenantId = tenant._id;
+    await user.save({ validateBeforeSave: false });
 
     const token = generateToken(user);
 
-    await mailerService.sendWelcomeEmail(email, name, orgName);
+    // Non-blocking — don't let email failure break registration
+    mailerService.sendWelcomeEmail(email, name, orgName).catch(err =>
+      logger.error(`Welcome email failed for ${email}: ${err.message}`)
+    );
 
     return success(res, {
       token,
-      user: { _id: user._id, name: user.name, email: user.email, role: user.role, tenantId: user.tenantId },
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        tenantId: user.tenantId,
+      },
     }, 'Registration successful', 201);
   } catch (err) {
     next(err);
@@ -60,7 +76,13 @@ exports.login = async (req, res, next) => {
     const token = generateToken(user);
     return success(res, {
       token,
-      user: { _id: user._id, name: user.name, email: user.email, role: user.role, tenantId: user.tenantId },
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        tenantId: user.tenantId,
+      },
     }, 'Login successful');
   } catch (err) {
     next(err);
@@ -82,7 +104,11 @@ exports.forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email });
-    if (!user) return error(res, 'No user with that email', 404);
+
+    // ✅ Always return 200 to prevent email enumeration attacks
+    if (!user) {
+      return success(res, {}, 'If that email exists, a reset link has been sent');
+    }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
     user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
@@ -92,7 +118,7 @@ exports.forgotPassword = async (req, res, next) => {
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
     await mailerService.sendPasswordResetEmail(email, user.name, resetUrl);
 
-    return success(res, {}, 'Password reset link sent to email');
+    return success(res, {}, 'If that email exists, a reset link has been sent');
   } catch (err) {
     next(err);
   }

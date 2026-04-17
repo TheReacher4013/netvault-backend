@@ -17,45 +17,45 @@ const HostingSchema = new mongoose.Schema({
   tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true },
   status: { type: String, enum: ['active', 'expiring', 'expired', 'suspended'], default: 'active' },
   controlPanel: { type: String, enum: ['cpanel', 'plesk', 'directadmin', 'webmin', 'none'], default: 'cpanel' },
-  // Encrypted credentials stored as string
-  _cpanelInfoEncrypted: { type: String },
+  // Encrypted credentials — never expose this field directly via API
+  _cpanelInfoEncrypted: { type: String, select: false },
   ssl: {
-    enabled: { type: Boolean, default: false },
-    provider: { type: String },
+    enabled:    { type: Boolean, default: false },
+    provider:   { type: String },
     expiryDate: { type: Date },
-    autoRenew: { type: Boolean, default: false },
-    status: { type: String, enum: ['valid', 'expiring', 'expired', 'none'], default: 'none' },
+    autoRenew:  { type: Boolean, default: false },
+    status:     { type: String, enum: ['valid', 'expiring', 'expired', 'none'], default: 'none' },
     alertsSent: {
       day30: { type: Boolean, default: false },
       day15: { type: Boolean, default: false },
-      day7: { type: Boolean, default: false },
+      day7:  { type: Boolean, default: false },
     },
   },
   backup: {
-    enabled: { type: Boolean, default: false },
-    frequency: { type: String, enum: ['daily', 'weekly', 'monthly'], default: 'weekly' },
-    location: { type: String },
+    enabled:    { type: Boolean, default: false },
+    frequency:  { type: String, enum: ['daily', 'weekly', 'monthly'], default: 'weekly' },
+    location:   { type: String },
     lastBackup: { type: Date },
     nextBackup: { type: Date },
   },
   uptime: {
     monitorEnabled: { type: Boolean, default: true },
-    currentStatus: { type: String, enum: ['up', 'down', 'unknown'], default: 'unknown' },
-    lastChecked: { type: Date },
-    uptimePercent: { type: Number, default: 100 },
+    currentStatus:  { type: String, enum: ['up', 'down', 'unknown'], default: 'unknown' },
+    lastChecked:    { type: Date },
+    uptimePercent:  { type: Number, default: 100 },
   },
-  renewalCost: { type: Number },
+  renewalCost:  { type: Number },
   sellingPrice: { type: Number },
-  notes: { type: String },
+  notes:        { type: String },
   alertsSent: {
     day30: { type: Boolean, default: false },
     day15: { type: Boolean, default: false },
-    day7: { type: Boolean, default: false },
-    day1: { type: Boolean, default: false },
+    day7:  { type: Boolean, default: false },
+    day1:  { type: Boolean, default: false },
   },
 }, { timestamps: true });
 
-// Virtual for cpanel info (encrypt/decrypt)
+// Virtual for cpanel info (encrypt on set, decrypt on get)
 HostingSchema.virtual('cpanelInfo')
   .get(function () {
     if (!this._cpanelInfoEncrypted) return null;
@@ -66,13 +66,25 @@ HostingSchema.virtual('cpanelInfo')
     if (val) this._cpanelInfoEncrypted = encryptData(JSON.stringify(val));
   });
 
-HostingSchema.set('toJSON', { virtuals: false }); // Don't expose encrypted field
-HostingSchema.set('toObject', { virtuals: true });
+// ✅ FIX (Bug #4): Use a transform to ALWAYS strip _cpanelInfoEncrypted from
+// any toJSON() call, regardless of which controller calls it.
+//
+// Original: `virtuals: false` alone does not remove _cpanelInfoEncrypted from
+// toJSON() output. Only getHostingById manually deleted it; updateHosting did not,
+// leaking the encrypted blob in every PUT /hosting/:id response.
+HostingSchema.set('toJSON', {
+  virtuals: false,
+  transform: (doc, ret) => {
+    delete ret._cpanelInfoEncrypted; // never expose this in API responses
+    return ret;
+  },
+});
+HostingSchema.set('toObject', { virtuals: true }); // virtuals available for internal use
 
 HostingSchema.pre('save', function (next) {
   const now = new Date();
   const daysLeft = Math.ceil((this.expiryDate - now) / (1000 * 60 * 60 * 24));
-  if (daysLeft < 0) this.status = 'expired';
+  if (daysLeft < 0)        this.status = 'expired';
   else if (daysLeft <= 30) this.status = 'expiring';
   else if (this.status !== 'suspended') this.status = 'active';
   next();

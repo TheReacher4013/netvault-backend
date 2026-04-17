@@ -51,8 +51,8 @@ const DomainSchema = new mongoose.Schema({
   alertsSent: {
     day30: { type: Boolean, default: false },
     day15: { type: Boolean, default: false },
-    day7: { type: Boolean, default: false },
-    day1: { type: Boolean, default: false },
+    day7:  { type: Boolean, default: false },
+    day1:  { type: Boolean, default: false },
   },
 }, { timestamps: true });
 
@@ -61,13 +61,29 @@ DomainSchema.index({ tenantId: 1, status: 1 });
 DomainSchema.index({ expiryDate: 1 });
 DomainSchema.plugin(mongoosePaginate);
 
-// Auto-update status based on expiry
+// ✅ FIX (Bug #10): Protect 'transfer' and 'suspended' statuses in ALL branches.
+//
+// Original code:
+//   else if (daysLeft <= 30) this.status = 'expiring';  ← clobbered 'transfer'/'suspended'
+//   else if (this.status !== 'transfer' && ...) this.status = 'active';
+//
+// A domain in the middle of a registrar transfer was being silently flipped
+// to 'expiring' when fewer than 30 days remained before expiry.
+// Now protected statuses are never overwritten by the auto-status logic.
+
+const PROTECTED_STATUSES = ['transfer', 'suspended'];
+
 DomainSchema.pre('save', function (next) {
+  // Never auto-change these — they represent deliberate operational states
+  if (PROTECTED_STATUSES.includes(this.status)) return next();
+
   const now = new Date();
   const daysLeft = Math.ceil((this.expiryDate - now) / (1000 * 60 * 60 * 24));
-  if (daysLeft < 0) this.status = 'expired';
+
+  if (daysLeft < 0)        this.status = 'expired';
   else if (daysLeft <= 30) this.status = 'expiring';
-  else if (this.status !== 'transfer' && this.status !== 'suspended') this.status = 'active';
+  else                     this.status = 'active';
+
   next();
 });
 

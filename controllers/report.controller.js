@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Domain = require('../models/Domain.model');
 const Hosting = require('../models/Hosting.model');
 const { Client, Invoice } = require('../models/index');
@@ -11,6 +12,7 @@ exports.getRenewalReport = async (req, res, next) => {
     futureDate.setDate(futureDate.getDate() + days);
     const now = new Date();
 
+    // find() auto-coerces tenantId string to ObjectId — these are fine as-is
     const [domains, hosting] = await Promise.all([
       Domain.find({ tenantId: req.tenantId, expiryDate: { $gte: now, $lte: futureDate } })
         .populate('clientId', 'name email phone').sort({ expiryDate: 1 }),
@@ -34,8 +36,13 @@ exports.getRevenueReport = async (req, res, next) => {
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - parseInt(months));
 
+    // ✅ FIX (Bug #3): Cast tenantId to ObjectId for all aggregate $match stages.
+    // Mongoose aggregate does NOT auto-coerce strings — without this, every
+    // $match returns 0 documents and all chart data is silently empty.
+    const tenantObjId = new mongoose.Types.ObjectId(req.tenantId);
+
     const revenue = await Invoice.aggregate([
-      { $match: { tenantId: req.tenantId, status: 'paid', paidAt: { $gte: startDate } } },
+      { $match: { tenantId: tenantObjId, status: 'paid', paidAt: { $gte: startDate } } },
       {
         $group: {
           _id: { year: { $year: '$paidAt' }, month: { $month: '$paidAt' } },
@@ -46,14 +53,13 @@ exports.getRevenueReport = async (req, res, next) => {
       { $sort: { '_id.year': 1, '_id.month': 1 } },
     ]);
 
-    // Domain renewal costs (expenses approximation)
     const domainCosts = await Domain.aggregate([
-      { $match: { tenantId: req.tenantId, renewalCost: { $exists: true, $gt: 0 } } },
+      { $match: { tenantId: tenantObjId, renewalCost: { $exists: true, $gt: 0 } } },
       { $group: { _id: null, totalCost: { $sum: '$renewalCost' } } },
     ]);
 
     const hostingCosts = await Hosting.aggregate([
-      { $match: { tenantId: req.tenantId, renewalCost: { $exists: true, $gt: 0 } } },
+      { $match: { tenantId: tenantObjId, renewalCost: { $exists: true, $gt: 0 } } },
       { $group: { _id: null, totalCost: { $sum: '$renewalCost' } } },
     ]);
 
@@ -67,18 +73,22 @@ exports.getRevenueReport = async (req, res, next) => {
 // @GET /api/reports/status-overview
 exports.getStatusOverview = async (req, res, next) => {
   try {
+    // ✅ FIX (Bug #3): Cast tenantId to ObjectId for aggregate stages
+    const tenantObjId = new mongoose.Types.ObjectId(req.tenantId);
+
     const [domainStats, hostingStats, clientCount, invoiceStats] = await Promise.all([
       Domain.aggregate([
-        { $match: { tenantId: req.tenantId } },
+        { $match: { tenantId: tenantObjId } },
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
       Hosting.aggregate([
-        { $match: { tenantId: req.tenantId } },
+        { $match: { tenantId: tenantObjId } },
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
+      // countDocuments auto-coerces — no ObjectId cast needed
       Client.countDocuments({ tenantId: req.tenantId, isActive: true }),
       Invoice.aggregate([
-        { $match: { tenantId: req.tenantId } },
+        { $match: { tenantId: tenantObjId } },
         { $group: { _id: '$status', count: { $sum: 1 }, total: { $sum: '$total' } } },
       ]),
     ]);
@@ -89,7 +99,10 @@ exports.getStatusOverview = async (req, res, next) => {
       domains: toMap(domainStats),
       hosting: toMap(hostingStats),
       clients: clientCount,
-      invoices: invoiceStats.reduce((acc, i) => { acc[i._id] = { count: i.count, total: i.total }; return acc; }, {}),
+      invoices: invoiceStats.reduce((acc, i) => {
+        acc[i._id] = { count: i.count, total: i.total };
+        return acc;
+      }, {}),
     });
   } catch (err) { next(err); }
 };
