@@ -20,7 +20,6 @@ cron.schedule('0 8 * * *', async () => {
   }
 });
 
-// ✅ FIX (Bug #15 minor): Fetch admin email AND tenant settings in one call
 const getTenantContext = async (tenantId) => {
   const [admin, tenant] = await Promise.all([
     User.findOne({ tenantId, role: 'admin', isActive: true }).select('email name'),
@@ -28,7 +27,7 @@ const getTenantContext = async (tenantId) => {
   ]);
   return {
     admin: admin ? { email: admin.email, name: admin.name } : null,
-    // ✅ FIX (Bug #15): Use per-tenant alertDays instead of hardcoded [30,15,7,1]
+   
     alertDays: tenant?.settings?.alertDays?.length
       ? tenant.settings.alertDays
       : [30, 15, 7, 1],
@@ -221,3 +220,89 @@ cron.schedule('0 9 * * *', async () => {
 });
 
 logger.info('Expiry checker cron jobs registered.');
+
+// ── Auto Renewal: runs every day at 7:00 AM UTC ──────────────────────────────
+cron.schedule('0 7 * * *', async () => {
+  logger.info('Running auto-renewal cron job...');
+  try {
+    await autoRenewDomains();
+    await autoRenewHosting();
+    logger.info('Auto-renewal completed.');
+  } catch (err) {
+    logger.error(`Auto-renewal error: ${err.message}`);
+  }
+});
+
+const autoRenewDomains = async () => {
+  const sevenDays = new Date();
+  sevenDays.setDate(sevenDays.getDate() + 7);
+
+  // Find active auto-renewal domains expiring within 7 days
+  const domains = await Domain.find({
+    autoRenewal: true,
+    status: { $in: ['active', 'expiring', 'expired'] },
+    expiryDate: { $lte: sevenDays },
+  });
+
+  for (const domain of domains) {
+    try {
+      const oldExpiry = new Date(domain.expiryDate);
+      // Renew by 1 year from current expiry (or from today if already expired)
+      const base = oldExpiry > new Date() ? oldExpiry : new Date();
+      base.setFullYear(base.getFullYear() + 1);
+      domain.expiryDate = base;
+      domain.alertsSent = { day30: false, day15: false, day7: false, day1: false };
+      await domain.save();
+
+      await Notification.create({
+        tenantId: domain.tenantId,
+        type: 'info',
+        title: `Domain Auto-Renewed: ${domain.name}`,
+        message: `${domain.name} was automatically renewed. New expiry: ${base.toDateString()}`,
+        entityId: domain._id,
+        entityType: 'domain',
+        severity: 'info',
+      });
+
+      logger.info(`Domain auto-renewed: ${domain.name} → ${base.toDateString()}`);
+    } catch (err) {
+      logger.error(`Failed auto-renew domain ${domain.name}: ${err.message}`);
+    }
+  }
+};
+
+const autoRenewHosting = async () => {
+  const sevenDays = new Date();
+  sevenDays.setDate(sevenDays.getDate() + 7);
+
+  const hostingList = await Hosting.find({
+    autoRenewal: true,
+    status: { $in: ['active', 'expiring', 'expired'] },
+    expiryDate: { $lte: sevenDays },
+  });
+
+  for (const hosting of hostingList) {
+    try {
+      const oldExpiry = new Date(hosting.expiryDate);
+      const base = oldExpiry > new Date() ? oldExpiry : new Date();
+      base.setFullYear(base.getFullYear() + 1);
+      hosting.expiryDate = base;
+      hosting.alertsSent = { day30: false, day15: false, day7: false, day1: false };
+      await hosting.save();
+
+      await Notification.create({
+        tenantId: hosting.tenantId,
+        type: 'info',
+        title: `Hosting Auto-Renewed: ${hosting.label}`,
+        message: `${hosting.label} was automatically renewed. New expiry: ${base.toDateString()}`,
+        entityId: hosting._id,
+        entityType: 'hosting',
+        severity: 'info',
+      });
+
+      logger.info(`Hosting auto-renewed: ${hosting.label} → ${base.toDateString()}`);
+    } catch (err) {
+      logger.error(`Failed auto-renew hosting ${hosting.label}: ${err.message}`);
+    }
+  }
+};

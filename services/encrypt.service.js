@@ -1,21 +1,7 @@
 const crypto = require('crypto');
 
-// ✅ FIX (Bug #15): Explicit key format (64-char hex = 32 bytes for AES-256).
-//
-// Original code: Buffer.from(key) — treated the env var as a UTF-8 string.
-// If the developer set ENCRYPTION_KEY to a hex string (e.g. via `openssl rand -hex 32`),
-// Buffer.from(hexString) would read each character's ASCII byte, NOT decode the hex,
-// resulting in a 64-byte key that gets sliced to 32 bytes of the wrong data.
-//
-// This version:
-//  - Expects ENCRYPTION_KEY as a 64-character hex string (= 32 raw bytes)
-//  - Generates one for you in dev if not set (with a loud warning)
-//  - Throws at startup in production if the key is missing or wrong length
-//
-// Generate a valid key with:  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
-const DEV_FALLBACK_KEY = 'a'.repeat(64); // 32 bytes of 0xAA — dev only, never production
-
+const DEV_FALLBACK_KEY = 'a'.repeat(64); 
 const rawKey = process.env.ENCRYPTION_KEY;
 
 if (!rawKey) {
@@ -39,12 +25,12 @@ if (keyHex.length !== 64) {
   );
 }
 
-const KEY = Buffer.from(keyHex, 'hex'); // correctly parses hex → 32-byte Buffer
+const KEY = Buffer.from(keyHex, 'hex'); 
 
 const ALGORITHM = 'aes-256-cbc';
 
 const encryptData = (text) => {
-  const iv = crypto.randomBytes(16); // random IV per encryption = no pattern leakage
+  const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv(ALGORITHM, KEY, iv);
   let encrypted = cipher.update(String(text), 'utf8', 'hex');
   encrypted += cipher.final('hex');

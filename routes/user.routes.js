@@ -8,13 +8,12 @@ const ctrl = require('../controllers/user.controller');
 
 router.use(protect);
 
-// Profile routes (any authenticated user)
 router.get('/profile', ctrl.getProfile);
 router.put('/profile', ctrl.updateProfile);
 
-// Team management (admin only)
+
 router.get('/', checkRole('admin', 'superAdmin'), ctrl.getUsers);
-router.post('/', checkRole('admin', 'superAdmin'), checkStaffLimit, ctrl.addUser); // ← limit enforced
+router.post('/', checkRole('admin', 'superAdmin'), checkStaffLimit, ctrl.addUser); 
 
 router.patch('/:id/role', checkRole('admin', 'superAdmin'), ctrl.updateRole);
 router.patch('/:id/toggle-active', checkRole('admin', 'superAdmin'), ctrl.toggleActive);

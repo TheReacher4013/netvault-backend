@@ -2,10 +2,9 @@ const Hosting = require('../models/Hosting.model');
 const { UptimeLog, Notification } = require('../models/index');
 const { success, error } = require('../utils/apiResponse');
 
-// Helper: strip the encrypted blob before sending to client
 const safeHosting = (hostingDoc) => {
   const obj = hostingDoc.toJSON();
-  delete obj._cpanelInfoEncrypted; // ✅ FIX (Bug #4): always strip this field
+  delete obj._cpanelInfoEncrypted;
   return obj;
 };
 
@@ -39,10 +38,15 @@ exports.addHosting = async (req, res, next) => {
   try {
     const { cpanelInfo, ...rest } = req.body;
 
-    // ✅ Whitelist protected fields
-    const { tenantId: _t, ...safeRest } = rest; // prevent body tenantId injection
+    // Validate expiry date must be in the future
+    if (!rest.expiryDate) return error(res, 'Expiry date is required', 400);
+    const expiry = new Date(rest.expiryDate);
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    if (expiry <= now) return error(res, 'Expiry date must be in the future', 400);
+
+    const { tenantId: _t, ...safeRest } = rest;
     const hosting = new Hosting({ ...safeRest, tenantId: req.tenantId });
-    if (cpanelInfo) hosting.cpanelInfo = cpanelInfo; // goes through virtual setter → encrypted
+    if (cpanelInfo) hosting.cpanelInfo = cpanelInfo;
     await hosting.save();
     await hosting.populate('clientId', 'name email');
     return success(res, { hosting: safeHosting(hosting) }, 'Hosting added', 201);
@@ -62,15 +66,21 @@ exports.getHostingById = async (req, res, next) => {
 // @PUT /api/hosting/:id
 exports.updateHosting = async (req, res, next) => {
   try {
-    const { cpanelInfo, tenantId: _t, ...rest } = req.body; // strip tenantId injection
+    const { cpanelInfo, tenantId: _t, ...rest } = req.body;
+
+    // Validate expiry date must be in the future (if provided)
+    if (rest.expiryDate) {
+      const expiry = new Date(rest.expiryDate);
+      const now = new Date(); now.setHours(0, 0, 0, 0);
+      if (expiry <= now) return error(res, 'Expiry date must be in the future', 400);
+    }
+
     const hosting = await Hosting.findOne({ _id: req.params.id, tenantId: req.tenantId });
     if (!hosting) return error(res, 'Hosting not found', 404);
     Object.assign(hosting, rest);
     if (cpanelInfo) hosting.cpanelInfo = cpanelInfo;
     await hosting.save();
 
-    // ✅ FIX (Bug #4): Use safeHosting() — previously toJSON() without delete
-    // was leaking _cpanelInfoEncrypted in the update response
     return success(res, { hosting: safeHosting(hosting) }, 'Hosting updated');
   } catch (err) { next(err); }
 };

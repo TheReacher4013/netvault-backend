@@ -2,7 +2,7 @@ const Hosting = require('../models/Hosting.model');
 const { UptimeLog } = require('../models/index');
 const { success, error } = require('../utils/apiResponse');
 
-// @GET /api/uptime/status  — Live status all hosts in tenant
+
 exports.getLiveStatus = async (req, res, next) => {
   try {
     const hostingList = await Hosting.find({

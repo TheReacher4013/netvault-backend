@@ -1,16 +1,18 @@
-// routes/tenant.routes.js
 const express = require('express');
 const router = express.Router();
 const protect = require('../middleware/auth.middleware');
 const checkRole = require('../middleware/role.middleware');
-const ctrl = require('../controllers/tenant.controller');
+
+const tenantCtrl = require('../controllers/tenant.controller');
+const approvalCtrl = require('../controllers/planApproval.controller');
 
 router.use(protect);
 
-// Any authenticated tenant user can view company info
-router.get('/me', ctrl.getMyTenant);
 
-// Only admin can update company settings
-router.put('/me', checkRole('admin'), ctrl.updateMyTenant);
+router.get('/me', tenantCtrl.getMyTenant);
+
+router.put('/me', checkRole('admin'), tenantCtrl.updateMyTenant);
+
+router.get('/status', approvalCtrl.getOwnTenantStatus);
 
 module.exports = router;

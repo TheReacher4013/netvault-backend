@@ -5,21 +5,9 @@ const Domain = require('../models/Domain.model');
 const Hosting = require('../models/Hosting.model');
 const { Client, Invoice, Plan } = require('../models/index');
 const { success, error } = require('../utils/apiResponse');
+const audit = require('../utils/audit');
+const mailerService = require('../services/mailer.service');
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ROOT CAUSE THAT WAS FIXED HERE:
-//
-// The original getPlatformStats only returned { totalTenants, activeTenants, totalUsers }.
-// The Dashboard was ROLE-BLIND — it called /api/reports/status-overview which does:
-//   Domain.aggregate([{ $match: { tenantId: req.tenantId } }])
-// For superAdmin, req.tenantId is undefined, so $match returned NOTHING.
-// SuperAdmin always saw zeros on their dashboard.
-//
-// This controller now provides complete platform-wide data for every superAdmin view.
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── @GET /api/super-admin/stats ───────────────────────────────────────────
-// Full platform stats — feeds the SuperAdmin dashboard
 exports.getPlatformStats = async (req, res, next) => {
   try {
     const [
@@ -101,7 +89,7 @@ exports.getPlatformStats = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── @GET /api/super-admin/tenants ──────────────────────────────────────────
+// ── @GET /api/super-admin/tenants ──────────
 exports.getTenants = async (req, res, next) => {
   try {
     const { page = 1, limit = 20, search } = req.query;
@@ -133,8 +121,7 @@ exports.getTenants = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── @GET /api/super-admin/tenants/:id ─────────────────────────────────────
-// Full drill-down: everything that tenant has created
+// ── @GET /api/super-admin/tenants/:id ───────
 exports.getTenant = async (req, res, next) => {
   try {
     const tenant = await Tenant.findById(req.params.id)
@@ -189,8 +176,7 @@ exports.getTenant = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── @POST /api/super-admin/tenants ────────────────────────────────────────
-// Create a new company (tenant) + its admin user from the SuperAdmin panel
+// ── @POST /api/super-admin/tenants ────────────
 exports.createTenant = async (req, res, next) => {
   try {
     const {
@@ -217,14 +203,14 @@ exports.createTenant = async (req, res, next) => {
     // Look up the plan
     const plan = await Plan.findOne({ name: planName });
 
-    // Step 1: Create admin user with a temp tenantId placeholder
+
     const adminUser = await User.create({
       name: adminName,
       email: adminEmail,
       password: adminPassword,
       phone: adminPhone,
       role: 'admin',
-      tenantId: new mongoose.Types.ObjectId(), // replaced below
+      tenantId: new mongoose.Types.ObjectId(),
     });
 
     // Step 2: Create tenant with real adminId
@@ -254,17 +240,54 @@ exports.createTenant = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── @PATCH /api/super-admin/tenants/:id/plan ──────────────────────────────
 exports.updateTenantPlan = async (req, res, next) => {
   try {
-    const { planId, planName, maxDomains, maxClients, maxStaff, maxHosting, subscriptionEnd } = req.body;
-    const tenant = await Tenant.findByIdAndUpdate(
-      req.params.id,
-      { planId, planName, maxDomains, maxClients, maxStaff, maxHosting, subscriptionEnd },
-      { new: true }
-    );
+    const { planId, extendTrialDays } = req.body;
+    if (!planId) return error(res, 'planId is required', 400);
+
+    const plan = await Plan.findOne({ _id: planId, isActive: true });
+    if (!plan) return error(res, 'Plan not found or inactive', 400);
+
+    const tenant = await Tenant.findById(req.params.id).populate('adminId', 'name email');
     if (!tenant) return error(res, 'Tenant not found', 404);
-    return success(res, { tenant }, 'Plan updated');
+
+    const previousPlanName = tenant.planName;
+
+    // Copy plan properties onto tenant
+    tenant.planId = plan._id;
+    tenant.planName = plan.name;
+    tenant.maxDomains = plan.maxDomains;
+    tenant.maxClients = plan.maxClients;
+    tenant.maxStaff = plan.maxStaff;
+    tenant.maxHosting = plan.maxHosting;
+
+    // Optionally extend subscription end date
+    if (extendTrialDays && Number.isFinite(+extendTrialDays) && +extendTrialDays > 0) {
+      const current = tenant.subscriptionEnd && tenant.subscriptionEnd > new Date()
+        ? tenant.subscriptionEnd
+        : new Date();
+      tenant.subscriptionEnd = new Date(current.getTime() + (+extendTrialDays) * 86400000);
+    } else if (!tenant.subscriptionEnd) {
+      // No end date set yet — give them the new plan's default trial
+      tenant.subscriptionEnd = new Date(Date.now() + (plan.trialDays || 14) * 86400000);
+    }
+
+    await tenant.save();
+
+    // Audit
+    audit.log(req, 'tenant.plan-change', 'tenant', tenant._id, {
+      from: previousPlanName, to: plan.name, orgName: tenant.orgName,
+    });
+
+    // Best-effort email notification to tenant admin
+    if (tenant.adminId?.email) {
+      mailerService.sendPlanChangeEmail?.(
+        tenant.adminId.email, tenant.adminId.name, tenant.orgName,
+        previousPlanName || '—', plan.displayName
+      ).catch(err => console.warn(`[mailer] plan-change email failed: ${err.message}`));
+    }
+
+    return success(res, { tenant }, `Plan updated to ${plan.displayName}`);
   } catch (err) { next(err); }
 };
 
@@ -382,5 +405,22 @@ exports.updatePlan = async (req, res, next) => {
     const plan = await Plan.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!plan) return error(res, 'Plan not found', 404);
     return success(res, { plan }, 'Plan updated');
+  } catch (err) { next(err); }
+};
+
+// ── @DELETE /api/super-admin/plans/:id ───────────────────────────────────
+exports.deletePlan = async (req, res, next) => {
+  try {
+    const plan = await Plan.findById(req.params.id);
+    if (!plan) return error(res, 'Plan not found', 404);
+
+    // Prevent deleting a plan that is assigned to active tenants
+    const tenantsOnPlan = await Tenant.countDocuments({ planId: req.params.id });
+    if (tenantsOnPlan > 0) {
+      return error(res, `Cannot delete plan — ${tenantsOnPlan} company(s) are currently on this plan. Reassign them first.`, 400);
+    }
+
+    await Plan.findByIdAndDelete(req.params.id);
+    return success(res, {}, 'Plan deleted successfully.');
   } catch (err) { next(err); }
 };

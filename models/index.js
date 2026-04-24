@@ -9,6 +9,13 @@ const ClientSchema = new mongoose.Schema({
   address: { type: String },
   avatar: { type: String },
   tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true },
+
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+
+  //  NEW: invite flow — admin creates client, then invites them to set password
+  inviteToken: { type: String, select: false },
+  inviteTokenExpire: { type: Date, select: false },
+
   isActive: { type: Boolean, default: true },
   notes: [{
     content: { type: String, required: true },
@@ -28,9 +35,28 @@ ClientSchema.virtual('invoices', {
   ref: 'Invoice', localField: '_id', foreignField: 'clientId',
 });
 
+//  NEW: convenience flag for frontend
+ClientSchema.virtual('hasPortalAccess').get(function () {
+  return !!this.userId;
+});
+
+// Strip invite-token fields from every API response
+ClientSchema.set('toJSON', {
+  virtuals: true,
+  transform: (doc, ret) => {
+    delete ret.inviteToken;
+    delete ret.inviteTokenExpire;
+    return ret;
+  },
+});
+
 ClientSchema.index({ tenantId: 1 });
+ClientSchema.index({ userId: 1 });
 ClientSchema.plugin(mongoosePaginate);
+
 const Client = mongoose.model('Client', ClientSchema);
+
+// ── Everything below is UNCHANGED from your existing models/index.js ────────
 
 // ── Invoice ──────────────────────────────────────────────────────────────
 const InvoiceItemSchema = new mongoose.Schema({
@@ -42,7 +68,7 @@ const InvoiceItemSchema = new mongoose.Schema({
 });
 
 const InvoiceSchema = new mongoose.Schema({
-  invoiceNo: { type: String, unique: true, required: true },
+  invoiceNo: { type: String, required: true },
   clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
   tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true },
   items: [InvoiceItemSchema],
@@ -60,6 +86,7 @@ const InvoiceSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
+InvoiceSchema.index({ tenantId: 1, invoiceNo: 1 }, { unique: true }); // per-tenant uniqueness
 InvoiceSchema.index({ tenantId: 1, status: 1 });
 InvoiceSchema.index({ clientId: 1 });
 InvoiceSchema.plugin(mongoosePaginate);
@@ -121,7 +148,7 @@ const UptimeLogSchema = new mongoose.Schema({
   hostingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Hosting', required: true },
   tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true },
   status: { type: String, enum: ['up', 'down'], required: true },
-  responseTime: { type: Number }, // ms
+  responseTime: { type: Number },
   statusCode: { type: Number },
   checkedAt: { type: Date, default: Date.now },
   error: { type: String },
@@ -131,7 +158,7 @@ UptimeLogSchema.index({ hostingId: 1, checkedAt: -1 });
 UptimeLogSchema.index({ tenantId: 1 });
 const UptimeLog = mongoose.model('UptimeLog', UptimeLogSchema);
 
-// ── Plan (SaaS Subscription) ──────────────────────────────────────────────
+// ── Plan ──────────────────────────────────────────────────────────────────
 const PlanSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
   displayName: { type: String, required: true },

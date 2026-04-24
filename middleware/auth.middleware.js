@@ -2,6 +2,8 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User.model');
 const { error } = require('../utils/apiResponse');
 
+const CLIENT_PORTAL_PREFIX = '/api/client-portal';
+
 const protect = async (req, res, next) => {
   let token;
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
@@ -17,10 +19,17 @@ const protect = async (req, res, next) => {
       return error(res, 'User not found or deactivated', 401);
     }
 
-    // ✅ FIX (Bug #13): Use tenantId from the live DB user record, not the JWT.
-    // The JWT payload could be stale (e.g., after a tenant reassignment),
-    // while req.user.tenantId is always the current DB value.
+  
     req.tenantId = req.user.tenantId;
+
+   
+    if (req.user.role === 'client' && !req.originalUrl.startsWith(CLIENT_PORTAL_PREFIX)) {
+      return error(
+        res,
+        'Clients can only access the client portal. Please log in to the client-specific URL.',
+        403
+      );
+    }
 
     next();
   } catch (err) {

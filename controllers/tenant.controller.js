@@ -1,7 +1,3 @@
-// controllers/tenant.controller.js
-// Allows the logged-in admin to view and update THEIR OWN company settings.
-// This is separate from the SuperAdmin controller which manages ALL tenants.
-
 const Tenant = require('../models/Tenant.model');
 const { success, error } = require('../utils/apiResponse');
 

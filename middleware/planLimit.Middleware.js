@@ -1,20 +1,10 @@
-// middleware/planLimit.middleware.js
-//
-// PURPOSE: Enforce subscription plan limits at the API layer.
-// Previously, maxDomains/maxClients/maxHosting were stored on the Tenant
-// but NEVER checked — any tenant could add unlimited records regardless of plan.
-//
-// HOW TO USE in routes:
-//   const { checkDomainLimit, checkClientLimit, checkHostingLimit } = require('../middleware/planLimit.middleware');
-//   router.post('/', protect, checkDomainLimit, ctrl.addDomain);
-//
 const Tenant = require('../models/Tenant.model');
 const Domain = require('../models/Domain.model');
 const Hosting = require('../models/Hosting.model');
 const { Client } = require('../models/index');
 const { error } = require('../utils/apiResponse');
 
-// ── Shared helper ─────────────────────────────────────────────────────────
+// ── Shared helper ─────
 const checkLimit = async (req, res, next, Model, tenantField, limitField, resourceName) => {
     try {
         // SuperAdmin is never limited

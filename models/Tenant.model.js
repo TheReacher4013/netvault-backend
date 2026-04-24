@@ -11,9 +11,23 @@ const TenantSchema = new mongoose.Schema({
   phone: { type: String },
   email: { type: String },
   isActive: { type: Boolean, default: true },
+
+  //  NEW: Plan approval lifecycle
+  planStatus: {
+    type: String,
+    enum: ['pending', 'active', 'suspended', 'rejected'],
+    default: 'active',
+    index: true,
+  },
+  approvedAt: { type: Date },
+  approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  rejectedAt: { type: Date },
+  rejectionReason: { type: String },
+
   maxDomains: { type: Number, default: 20 },
   maxClients: { type: Number, default: 10 },
   maxStaff: { type: Number, default: 3 },
+  maxHosting: { type: Number, default: 10 },
   subscriptionStart: { type: Date, default: Date.now },
   subscriptionEnd: { type: Date },
   settings: {

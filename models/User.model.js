@@ -13,6 +13,11 @@ const UserSchema = new mongoose.Schema({
   lastLogin: { type: Date },
   resetPasswordToken: String,
   resetPasswordExpire: Date,
+
+  //  NEW: 2FA (§8.4 of the spec)
+  twoFactorEnabled: { type: Boolean, default: false },
+  twoFactorSecret: { type: String, select: false },        
+  twoFactorBackupCodes: { type: [String], select: false }, 
 }, { timestamps: true });
 
 UserSchema.pre('save', async function (next) {

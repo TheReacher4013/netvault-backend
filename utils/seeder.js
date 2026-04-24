@@ -10,7 +10,7 @@ const seed = async () => {
     await mongoose.connect(process.env.MONGO_URI);
     logger.info('Connected to MongoDB for seeding...');
 
-    // ── Seed Plans ──────────────────────────────────────────────────────
+  
     await Plan.deleteMany({});
     const plans = await Plan.insertMany([
       {
@@ -65,10 +65,10 @@ const seed = async () => {
     ]);
     logger.info(`✓ Seeded ${plans.length} plans`);
 
-    // ── Seed Super Admin ────────────────────────────────────────────────
+    
     const existingSA = await User.findOne({ role: 'superAdmin' });
     if (!existingSA) {
-      // Super admin has no tenant
+    
       const superAdmin = await User.create({
         name: 'Super Admin',
         email: process.env.SUPER_ADMIN_EMAIL || 'superadmin@netvault.app',
@@ -81,7 +81,7 @@ const seed = async () => {
       logger.info('✓ Super Admin already exists, skipping.');
     }
 
-    // ── Seed Demo Tenant + Admin ────────────────────────────────────────
+
     const existingDemo = await Tenant.findOne({ orgName: 'Demo Agency' });
     if (!existingDemo) {
       const demoPlan = plans.find(p => p.name === 'pro');

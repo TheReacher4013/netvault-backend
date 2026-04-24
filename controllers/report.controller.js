@@ -4,7 +4,7 @@ const Hosting = require('../models/Hosting.model');
 const { Client, Invoice } = require('../models/index');
 const { success, error } = require('../utils/apiResponse');
 
-// @GET /api/reports/renewals?days=30
+
 exports.getRenewalReport = async (req, res, next) => {
   try {
     const days = parseInt(req.query.days) || 30;
@@ -36,9 +36,6 @@ exports.getRevenueReport = async (req, res, next) => {
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - parseInt(months));
 
-    // ✅ FIX (Bug #3): Cast tenantId to ObjectId for all aggregate $match stages.
-    // Mongoose aggregate does NOT auto-coerce strings — without this, every
-    // $match returns 0 documents and all chart data is silently empty.
     const tenantObjId = new mongoose.Types.ObjectId(req.tenantId);
 
     const revenue = await Invoice.aggregate([
@@ -73,7 +70,6 @@ exports.getRevenueReport = async (req, res, next) => {
 // @GET /api/reports/status-overview
 exports.getStatusOverview = async (req, res, next) => {
   try {
-    // ✅ FIX (Bug #3): Cast tenantId to ObjectId for aggregate stages
     const tenantObjId = new mongoose.Types.ObjectId(req.tenantId);
 
     const [domainStats, hostingStats, clientCount, invoiceStats] = await Promise.all([

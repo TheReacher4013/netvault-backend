@@ -10,10 +10,12 @@ require('dotenv').config();
 const connectDB = require('./config/db');
 const logger = require('./utils/logger');
 const errorMiddleware = require('./middleware/error.middleware');
-// ✅ FIX (Bug #2): Import the singleton BEFORE the jobs that need it
 const { setIO } = require('./utils/socket');
 
-// Route imports
+
+const checkPlanApproved = require('./middleware/planApproval.middleware');
+
+
 const authRoutes = require('./routes/auth.routes');
 const domainRoutes = require('./routes/domain.routes');
 const hostingRoutes = require('./routes/hosting.routes');
@@ -25,20 +27,15 @@ const userRoutes = require('./routes/user.routes');
 const uptimeRoutes = require('./routes/uptime.routes');
 const superAdminRoutes = require('./routes/superadmin.routes');
 const tenantRoutes = require('./routes/tenant.routes');
-
+const activityRoutes = require('./routes/activity.routes');
+const whoisRoutes = require('./routes/whois.routes');
+const clientPortalRoutes = require('./routes/clientPortal.routes');
+const inviteRoutes = require('./routes/invite.routes');
+const plansRoutes = require('./routes/plans.routes');
+const otpRoutes = require('./routes/otp.routes');
 
 const app = express();
 const server = http.createServer(app);
-
-// Socket.io setup
-// const io = new Server(server, {
-//   cors: {
-//     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-//     methods: ['GET', 'POST'],
-//     credentials: true,
-//   },
-// });
-
 const io = new Server(server, {
   cors: {
     origin: (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, ''),
@@ -47,15 +44,11 @@ const io = new Server(server, {
   },
 });
 
-// ✅ FIX (Bug #2): Register io in singleton BEFORE requiring cron jobs
-// This ensures uptimeChecker.js can safely call getIO() at emit time
-// without a circular dependency.
 setIO(io);
 app.set('io', io);
-
-// ── Now safe to start cron jobs (they use getIO(), not require('./server')) ──
 require('./jobs/expiryChecker');
 require('./jobs/uptimeChecker');
+require('./jobs/domainMonitor');
 
 io.on('connection', (socket) => {
   logger.info(`Socket connected: ${socket.id}`);
@@ -69,21 +62,14 @@ io.on('connection', (socket) => {
     logger.info(`Socket disconnected: ${socket.id}`);
   });
 });
-
-// Connect to DB
 connectDB();
-
-// Security middleware
 app.use(helmet());
-
-// CORS — strip trailing slash, support multiple origins
 const allowedOrigins = [
   (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, ''),
   'http://localhost:5173',
   'http://localhost:3000',
   'http://127.0.0.1:5173',
 ];
-
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
@@ -96,24 +82,21 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   optionsSuccessStatus: 200,
 }));
-
 app.options('*', cors());
-
-// Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 200,
+  windowMs: 30 * 90 * 4000,
+  max: 600,
   message: { success: false, message: 'Too many requests, please try again later.' },
 });
 app.use('/api/', limiter);
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
+  windowMs: 40 * 90 * 3000,
+  max: process.env.NODE_ENV === 'production' ? 40 : 800,
   message: { success: false, message: 'Too many auth attempts, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
-
-// Body parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -122,20 +105,23 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 app.use('/uploads', express.static('uploads'));
-
-// ── Routes ──
 app.use('/api/auth', authLimiter, authRoutes);
-app.use('/api/domains', domainRoutes);
-app.use('/api/hosting', hostingRoutes);
-app.use('/api/clients', clientRoutes);
-app.use('/api/billing', billingRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/reports', reportRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/uptime', uptimeRoutes);
+app.use('/api/otp', otpRoutes);
+app.use('/api/plans', plansRoutes);
+app.use('/api/invite', inviteRoutes);
+app.use('/api/tenant', tenantRoutes);        
+app.use('/api/notifications', notificationRoutes);   
 app.use('/api/super-admin', superAdminRoutes);
-app.use('/api/tenant', tenantRoutes);
-
+app.use('/api/client-portal', clientPortalRoutes);
+app.use('/api/domains', checkPlanApproved, domainRoutes);
+app.use('/api/hosting', checkPlanApproved, hostingRoutes);
+app.use('/api/clients', checkPlanApproved, clientRoutes);
+app.use('/api/billing', checkPlanApproved, billingRoutes);
+app.use('/api/reports', checkPlanApproved, reportRoutes);
+app.use('/api/uptime', checkPlanApproved, uptimeRoutes);
+app.use('/api/users', checkPlanApproved, userRoutes);  
+app.use('/api/activity', checkPlanApproved, activityRoutes);
+app.use('/api/whois', checkPlanApproved, whoisRoutes);
 app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'NetVault API running', timestamp: new Date() });
 });
@@ -143,7 +129,6 @@ app.get('/api/health', (req, res) => {
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found` });
 });
-
 app.use(errorMiddleware);
 
 const PORT = process.env.PORT || 5000;

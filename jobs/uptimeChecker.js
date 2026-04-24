@@ -5,13 +5,10 @@ const { UptimeLog, Notification } = require('../models/index');
 const User = require('../models/User.model');
 const mailerService = require('../services/mailer.service');
 const logger = require('../utils/logger');
-// ✅ FIX (Bug #2): Use the socket singleton instead of require('../server').
-// server.js requires this file at startup, so require('../server') created a
-// circular dependency — Node returned a partial exports object where `io`
-// was always undefined. Socket DOWN events silently never fired.
+
 const { getIO } = require('../utils/socket');
 
-// Simple concurrency limiter (avoids installing p-limit just for this)
+
 const runWithConcurrency = async (tasks, limit = 10) => {
   const results = [];
   const executing = new Set();
@@ -26,17 +23,12 @@ const runWithConcurrency = async (tasks, limit = 10) => {
   return Promise.allSettled(results);
 };
 
-// Runs every 5 minutes
 cron.schedule('*/5 * * * *', async () => {
   try {
     const hostingList = await Hosting.find({ 'uptime.monitorEnabled': true })
       .select('_id label serverIP tenantId uptime clientId');
 
     if (hostingList.length === 0) return;
-
-    // ✅ FIX (Bug #14): Run pings in parallel with a concurrency cap of 10.
-    // Original used for...of with await — 100 hosts × 10s timeout = 1000s per run,
-    // causing cron jobs to pile up. Now all pings run concurrently (max 10 at once).
     await runWithConcurrency(
       hostingList.map(hosting => () => pingServer(hosting)),
       10
@@ -114,8 +106,6 @@ const pingServer = async (hosting) => {
         severity: 'danger',
       });
 
-      // ✅ FIX (Bug #2): getIO() returns the io instance registered by server.js
-      // via setIO(). No circular dependency — io is always available here.
       const io = getIO();
       io?.to(`tenant-${hosting.tenantId}`).emit('server-down', {
         hostingId: hosting._id,
