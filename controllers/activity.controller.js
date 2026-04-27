@@ -42,3 +42,26 @@ exports.getEntityTimeline = async (req, res, next) => {
         return success(res, { logs });
     } catch (err) { next(err); }
 };
+
+
+// @DELETE /api/activity  — bulk delete by ids
+exports.deleteLogs = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return error(res, 'ids array required', 400);
+        }
+
+        const query = { _id: { $in: ids } };
+
+        // superAdmin सोडून बाकी फक्त स्वतःच्या tenant चे delete करू शकतात
+        if (req.user.role !== 'superAdmin') {
+            query.tenantId = req.tenantId;
+        }
+
+        const result = await ActivityLog.deleteMany(query);
+
+        return success(res, { deleted: result.deletedCount });
+    } catch (err) { next(err); }
+};

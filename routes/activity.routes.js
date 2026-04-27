@@ -10,5 +10,5 @@ router.use(protect);
 // Only admin/superAdmin can view the audit log
 router.get('/', checkRole('admin', 'superAdmin'), ctrl.getLogs);
 router.get('/entity/:type/:id', checkRole('admin', 'staff', 'superAdmin'), ctrl.getEntityTimeline);
-
+router.delete('/', checkRole('admin', 'superAdmin'), ctrl.deleteLogs);
 module.exports = router;

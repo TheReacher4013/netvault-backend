@@ -88,7 +88,7 @@ exports.getProfile = async (req, res, next) => {
 };
 
 // @PUT /api/users/profile
-// ✅ UPDATED: accepts `email` with uniqueness check
+// UPDATED: accepts `email` with uniqueness check
 exports.updateProfile = async (req, res, next) => {
   try {
     const { name, phone, avatar, email } = req.body;

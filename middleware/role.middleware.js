@@ -1,9 +1,60 @@
+// const { error } = require('../utils/apiResponse');
+
+// const checkRole = (...roles) => {
+//   return (req, res, next) => {
+//     if (!req.user) return error(res, 'Not authenticated', 401);
+//     if (!roles.includes(req.user.role)) {
+//       return error(res, `Role '${req.user.role}' is not authorized for this action`, 403);
+//     }
+//     next();
+//   };
+// };
+
+// module.exports = checkRole;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const { error } = require('../utils/apiResponse');
 
-const checkRole = (...roles) => {
+// ── Role hierarchy & permission groups ────────────────────────────────────────
+// superAdmin  → platform owner, all access
+// admin       → agency owner, full access within tenant
+// accountManager   → manages assigned clients, NO billing/settings
+// technicalManager → DNS, hosting, domains, SSL — NO billing
+// billingManager   → invoices, renewals, payments — NO DNS/hosting config
+// staff       → general access, no delete
+// client      → client portal only, read-only own data
+
+const ROLE_PERMISSIONS = {
+  superAdmin: ['all'],
+  admin: ['domains', 'hosting', 'clients', 'billing', 'vault', 'users', 'settings', 'reports'],
+  accountManager: ['domains:read', 'hosting:read', 'clients', 'billing:read', 'vault:read'],
+  technicalManager: ['domains', 'hosting', 'clients:read', 'vault', 'billing:read'],
+  billingManager: ['billing', 'clients:read', 'domains:read', 'hosting:read', 'reports'],
+  staff: ['domains', 'hosting', 'clients', 'billing:create', 'vault:read'],
+  client: ['portal'],
+};
+
+// Simple role check — can this role do this action?
+const checkRole = (...allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) return error(res, 'Not authenticated', 401);
-    if (!roles.includes(req.user.role)) {
+    // superAdmin always passes
+    if (req.user.role === 'superAdmin') return next();
+    if (!allowedRoles.includes(req.user.role)) {
       return error(res, `Role '${req.user.role}' is not authorized for this action`, 403);
     }
     next();
@@ -11,3 +62,4 @@ const checkRole = (...roles) => {
 };
 
 module.exports = checkRole;
+module.exports.ROLE_PERMISSIONS = ROLE_PERMISSIONS;
