@@ -80,6 +80,7 @@ exports.addDomain = async (req, res, next) => {
       title: 'New Domain Added',
       message: `Domain ${domain.name} has been added successfully.`,
       entityId: domain._id, entityType: 'domain', severity: 'info',
+      actionUrl: `/domains/${domain._id}`,
     });
 
     const io = req.app.get('io');
@@ -287,6 +288,106 @@ exports.getDomainStats = async (req, res, next) => {
       Domain.countDocuments({ tenantId: req.tenantId, status: 'transfer' }),
     ]);
     return success(res, { total, active, expiring, expired, transfer });
+  } catch (err) { next(err); }
+};
+
+// ── Export all domains as CSV ─────────────────────────────────────────────────
+exports.exportDomainsCSV = async (req, res, next) => {
+  try {
+    const domains = await Domain.find({ tenantId: req.tenantId })
+      .populate('clientId', 'name email')
+      .sort({ expiryDate: 1 })
+      .lean();
+
+    const headers = ['name', 'registrar', 'status', 'expiryDate', 'registrationDate', 'autoRenewal', 'renewalCost', 'client', 'tags'];
+
+    const rows = domains.map(d => [
+      d.name || '',
+      d.registrar || '',
+      d.status || '',
+      d.expiryDate ? new Date(d.expiryDate).toISOString().split('T')[0] : '',
+      d.registrationDate ? new Date(d.registrationDate).toISOString().split('T')[0] : '',
+      d.autoRenewal ? 'true' : 'false',
+      d.renewalCost != null ? d.renewalCost : '',
+      d.clientId?.name || '',
+      (d.tags || []).join(';'),
+    ]);
+
+    const csvLines = [headers.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))];
+    const csvContent = csvLines.join('\r\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="domains-${Date.now()}.csv"`);
+    return res.send(csvContent);
+  } catch (err) { next(err); }
+};
+
+// ── Enhanced CSV import (supports more fields than basic importDomainsCSV) ────
+exports.importDomainsEnhanced = async (req, res, next) => {
+  try {
+    if (!req.file) return error(res, 'No CSV file uploaded', 400);
+    const results = [];
+    let responded = false;
+
+    fs.createReadStream(req.file.path)
+      .pipe(csv())
+      .on('data', (row) => results.push(row))
+      .on('error', (streamErr) => {
+        if (responded) return;
+        responded = true;
+        if (fs.existsSync(req.file.path)) { try { fs.unlinkSync(req.file.path); } catch (_) {} }
+        next(streamErr);
+      })
+      .on('end', async () => {
+        if (responded) return;
+        responded = true;
+
+        const created = [], updated = [], errors = [];
+
+        for (const row of results) {
+          try {
+            const rawName = (row.name || row.domain || '').toLowerCase().trim();
+            if (!rawName) { errors.push({ name: rawName, error: 'Missing domain name' }); continue; }
+
+            const expiryRaw = row.expiryDate || row.expiry_date || row.expiry;
+            if (!expiryRaw) { errors.push({ name: rawName, error: 'Missing expiry date' }); continue; }
+
+            const expiryDate = new Date(expiryRaw);
+            if (isNaN(expiryDate.getTime())) { errors.push({ name: rawName, error: 'Invalid expiry date' }); continue; }
+
+            const payload = {
+              name: rawName,
+              registrar: row.registrar || '',
+              expiryDate,
+              registrationDate: row.registrationDate || row.registration_date ? new Date(row.registrationDate || row.registration_date) : undefined,
+              autoRenewal: ['true', '1', 'yes'].includes(String(row.autoRenewal || row.auto_renewal || '').toLowerCase()),
+              renewalCost: row.renewalCost || row.renewal_cost ? parseFloat(row.renewalCost || row.renewal_cost) : undefined,
+              notes: row.notes || '',
+              tags: row.tags ? row.tags.split(';').map(t => t.trim()).filter(Boolean) : [],
+              tenantId: req.tenantId,
+            };
+
+            // Upsert: update if exists, create if not
+            const existing = await Domain.findOne({ name: rawName, tenantId: req.tenantId });
+            if (existing) {
+              await Domain.findByIdAndUpdate(existing._id, payload);
+              updated.push(rawName);
+            } else {
+              await Domain.create(payload);
+              created.push(rawName);
+            }
+          } catch (e) {
+            errors.push({ name: row.name || row.domain, error: e.message });
+          }
+        }
+
+        if (fs.existsSync(req.file.path)) { try { fs.unlinkSync(req.file.path); } catch (_) {} }
+        return success(res, {
+          imported: created.length,
+          updated: updated.length,
+          errors,
+        }, `${created.length} created, ${updated.length} updated`);
+      });
   } catch (err) { next(err); }
 };
 

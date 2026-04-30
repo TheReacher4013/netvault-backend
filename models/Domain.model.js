@@ -35,6 +35,8 @@ const DomainSchema = new mongoose.Schema({
     default: 'active',
   },
   autoRenewal: { type: Boolean, default: false },
+  isLocal: { type: Boolean, default: false },   // hosted locally, no external registrar
+  localOnly: { type: Boolean, default: false },  // not registered externally at all
   isLive: { type: Boolean, default: true },
   hostingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Hosting', default: null }, // Linked hosting
 

@@ -79,6 +79,7 @@ exports.addClient = async (req, res, next) => {
       title: 'New Client Added',
       message: `Client ${client.name} has been added${portalAccess ? ' with portal access' : ''}.`,
       entityId: client._id, entityType: 'client', severity: 'info',
+      actionUrl: `/clients/${client._id}`,
     });
 
     audit.log(req, 'client.create', 'client', client._id, {

@@ -88,10 +88,11 @@ const buildNotifQuery = (req, extra = {}) => {
 exports.createNotification = async (req, res, next) => {
   try {
     if (req.user?.role !== 'superAdmin') return error(res, 'Forbidden', 403);
-    const { title, message, type, targetRoles, targetUsers, isGlobal } = req.body;
+    const { title, message, type, targetRoles, targetUsers, isGlobal, actionUrl } = req.body;
     const notification = await Notification.create({
       source: 'broadcast',
       title, message, type, targetRoles, targetUsers, isGlobal,
+      actionUrl: actionUrl || null,
       createdBy: req.user._id,
     });
     return success(res, { notification }, 'Notification created', 201);
@@ -102,10 +103,10 @@ exports.createNotification = async (req, res, next) => {
 exports.updateNotification = async (req, res, next) => {
   try {
     if (req.user?.role !== 'superAdmin') return error(res, 'Forbidden', 403);
-    const { title, message, type, targetRoles, targetUsers, isGlobal } = req.body;
+    const { title, message, type, targetRoles, targetUsers, isGlobal, actionUrl } = req.body;
     const notification = await Notification.findOneAndUpdate(
       { _id: req.params.id, source: 'broadcast' },
-      { title, message, type, targetRoles, targetUsers, isGlobal },
+      { title, message, type, targetRoles, targetUsers, isGlobal, actionUrl: actionUrl || null },
       { new: true, runValidators: true }
     );
     if (!notification) return error(res, 'Not found', 404);

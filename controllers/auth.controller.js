@@ -369,3 +369,17 @@ exports.changePassword = async (req, res, next) => {
     return success(res, {}, 'Password changed successfully');
   } catch (err) { next(err); }
 };
+//check email avalability
+exports.checkEmailAvailability = async (req, res, next) => {
+  try {
+    const email = (req.body.email || '').trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return error(res, 'Please provide a valid email address', 400);
+    }
+    const existing = await User.findOne({ email });
+    if (existing) {
+      return error(res, 'This email is already registered. Please sign in or use a different email.', 409);
+    }
+    return success(res, { available: true }, 'Email is available');
+  } catch (err) { next(err); }
+};

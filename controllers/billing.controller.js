@@ -95,6 +95,7 @@ exports.createInvoice = async (req, res, next) => {
       title: 'Invoice Created',
       message: `Invoice ${invoice.invoiceNo} for ${client.name} — ₹${total}`,
       entityId: invoice._id, entityType: 'invoice', severity: 'info',
+      actionUrl: `/billing/${invoice._id}`,
     });
 
     audit.log(req, 'invoice.create', 'invoice', invoice._id, {
@@ -148,6 +149,7 @@ exports.updateInvoiceStatus = async (req, res, next) => {
         title: 'Payment Received',
         message: `Invoice ${invoice.invoiceNo} marked as paid — ₹${invoice.total}`,
         entityId: invoice._id, entityType: 'invoice', severity: 'success',
+        actionUrl: `/billing/${invoice._id}`,
       });
     }
 

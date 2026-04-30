@@ -34,8 +34,8 @@ const getTenantContext = async (tenantId) => {
   };
 };
 
-const createNotification = async (tenantId, type, title, message, entityId, entityType, severity) => {
-  await Notification.create({ source: 'system', tenantId, type, title, message, entityId, entityType, severity });
+const createNotification = async (tenantId, type, title, message, entityId, entityType, severity, actionUrl = null) => {
+  await Notification.create({ source: 'system', tenantId, type, title, message, entityId, entityType, severity, actionUrl });
 };
 
 // ── Domain Expiry Check ──────────────────────────────────────────────────────
@@ -77,7 +77,8 @@ const checkDomainExpiry = async () => {
             `Domain Expiring: ${domain.name}`,
             `${domain.name} expires in ${days} day${days !== 1 ? 's' : ''}`,
             domain._id, 'domain',
-            days <= 7 ? 'danger' : 'warning'
+            days <= 7 ? 'danger' : 'warning',
+            `/domains/${domain._id}`
           );
 
           domain.alertsSent[`day${days}`] = true;
@@ -125,7 +126,8 @@ const checkHostingExpiry = async () => {
             `Hosting Expiring: ${hosting.label}`,
             `${hosting.label} expires in ${days} day${days !== 1 ? 's' : ''}`,
             hosting._id, 'hosting',
-            days <= 7 ? 'danger' : 'warning'
+            days <= 7 ? 'danger' : 'warning',
+            `/hosting/${hosting._id}`
           );
 
           hosting.alertsSent[`day${days}`] = true;
@@ -176,7 +178,8 @@ const checkSSLExpiry = async () => {
             `SSL Expiring: ${hosting.label}`,
             `SSL certificate for ${hosting.label} expires in ${days} days`,
             hosting._id, 'hosting',
-            days <= 7 ? 'danger' : 'warning'
+            days <= 7 ? 'danger' : 'warning',
+            `/hosting/${hosting._id}`
           );
 
           hosting.ssl.alertsSent[`day${days}`] = true;
@@ -207,7 +210,8 @@ cron.schedule('0 9 * * *', async () => {
         invoice.tenantId, 'invoice_overdue',
         `Invoice Overdue: ${invoice.invoiceNo}`,
         `Invoice ${invoice.invoiceNo} of ₹${invoice.total} is overdue`,
-        invoice._id, 'invoice', 'danger'
+        invoice._id, 'invoice', 'danger',
+        `/billing/${invoice._id}`
       );
     }
 

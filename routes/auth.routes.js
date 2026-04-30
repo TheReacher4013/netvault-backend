@@ -14,6 +14,7 @@ router.post('/register', [
   body('password').isLength({ min: 6 }).withMessage('Password min 6 chars'),
 ], validate, ctrl.register);
 
+router.post('/check-email', ctrl.checkEmailAvailability);
 router.post('/login', [
   body('email').isEmail(),
   body('password').notEmpty(),

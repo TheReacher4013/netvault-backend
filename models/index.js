@@ -137,6 +137,8 @@ const NotificationSchema = new mongoose.Schema({
   entityId: { type: mongoose.Schema.Types.ObjectId },
   entityType: { type: String, enum: ['domain', 'hosting', 'client', 'invoice', 'user'] },
   severity: { type: String, enum: ['info', 'warning', 'danger', 'success'], default: 'info' },
+  // Optional explicit front-end route to navigate to on click (e.g. '/domains/abc123')
+  actionUrl: { type: String, default: null },
   // For system alerts: simple boolean read flag per-tenant scope
   read: { type: Boolean, default: false },
   readAt: { type: Date },
