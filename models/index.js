@@ -123,20 +123,30 @@ const Credential = mongoose.model('Credential', CredentialSchema);
 
 // ── Notification ──────────────────────────────────────────────────────────
 const NotificationSchema = new mongoose.Schema({
-  tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true },
+  tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: false },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  // 'system' = auto-generated alert (cron/events), 'broadcast' = admin-sent to roles
+  source: { type: String, enum: ['system', 'broadcast'], default: 'system' },
   type: {
     type: String,
-    enum: ['domain_expiry', 'hosting_expiry', 'ssl_expiry', 'server_down', 'invoice_overdue', 'new_client', 'payment_received', 'info'],
-    required: true,
+    enum: ['domain_expiry', 'hosting_expiry', 'ssl_expiry', 'server_down', 'invoice_overdue', 'new_client', 'payment_received', 'info', 'warning', 'success', 'error'],
+    default: 'info',
   },
   title: { type: String, required: true },
   message: { type: String, required: true },
   entityId: { type: mongoose.Schema.Types.ObjectId },
   entityType: { type: String, enum: ['domain', 'hosting', 'client', 'invoice', 'user'] },
   severity: { type: String, enum: ['info', 'warning', 'danger', 'success'], default: 'info' },
+  // For system alerts: simple boolean read flag per-tenant scope
   read: { type: Boolean, default: false },
   readAt: { type: Date },
+  // For broadcast notifications: per-user read tracking
+  readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  // Broadcast-only fields
+  targetRoles: [{ type: String }],
+  targetUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  isGlobal: { type: Boolean, default: false },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
 NotificationSchema.index({ tenantId: 1, read: 1 });

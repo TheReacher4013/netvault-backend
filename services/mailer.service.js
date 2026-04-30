@@ -371,3 +371,41 @@ exports.sendPlanRejectedEmail = async (email, adminName, orgName, reason) => {
   `);
   await sendMail(email, `Update on your NetVault plan request`, html);
 };
+
+
+
+
+
+// ADD this function to mailer.service.js (paste at the bottom before last line)
+
+exports.sendAnnouncementEmail = async (email, name, title, content, priority) => {
+  const PRIORITY_CONFIG = {
+    low: { icon: '📢', label: 'Announcement', color: '#6B7280', bg: '#F3F4F6' },
+    medium: { icon: '📣', label: 'Announcement', color: '#3B82F6', bg: '#EFF6FF' },
+    high: { icon: '🔔', label: 'Important Update', color: '#F59E0B', bg: '#FFFBEB' },
+    urgent: { icon: '🚨', label: 'URGENT', color: '#EF4444', bg: '#FEF2F2' },
+  };
+  const cfg = PRIORITY_CONFIG[priority] || PRIORITY_CONFIG.medium;
+
+  const html = baseTemplate(`
+    <div class="header" style="background:linear-gradient(135deg,#1e1b4b,#312e81);">
+      <h1>${cfg.icon} NetVault</h1>
+      <p>${cfg.label}</p>
+    </div>
+    <div class="body">
+      <h2 style="color:#1e1b4b;">${title}</h2>
+      <p>Hi ${name},</p>
+      <div class="highlight" style="border-left-color:${cfg.color};background:${cfg.bg};">
+        ${content}
+      </div>
+      <a class="btn" style="background:#6366F1;" href="${process.env.FRONTEND_URL}/announcements">
+        View All Announcements
+      </a>
+      <p style="margin-top:20px;font-size:12px;color:#9CA3AF;">
+        You received this because you are a registered user of NetVault.
+      </p>
+    </div>
+    <div class="footer">NetVault — Platform Announcement</div>
+  `);
+  await sendMail(email, `${cfg.icon} ${title} — NetVault`, html);
+};

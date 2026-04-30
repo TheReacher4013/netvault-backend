@@ -35,7 +35,7 @@ const getTenantContext = async (tenantId) => {
 };
 
 const createNotification = async (tenantId, type, title, message, entityId, entityType, severity) => {
-  await Notification.create({ tenantId, type, title, message, entityId, entityType, severity });
+  await Notification.create({ source: 'system', tenantId, type, title, message, entityId, entityType, severity });
 };
 
 // ── Domain Expiry Check ──────────────────────────────────────────────────────
@@ -254,7 +254,7 @@ const autoRenewDomains = async () => {
       domain.alertsSent = { day30: false, day15: false, day7: false, day1: false };
       await domain.save();
 
-      await Notification.create({
+      await Notification.create({ source: 'system',
         tenantId: domain.tenantId,
         type: 'info',
         title: `Domain Auto-Renewed: ${domain.name}`,
@@ -290,7 +290,7 @@ const autoRenewHosting = async () => {
       hosting.alertsSent = { day30: false, day15: false, day7: false, day1: false };
       await hosting.save();
 
-      await Notification.create({
+      await Notification.create({ source: 'system',
         tenantId: hosting.tenantId,
         type: 'info',
         title: `Hosting Auto-Renewed: ${hosting.label}`,

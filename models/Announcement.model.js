@@ -1,22 +1,13 @@
 const mongoose = require('mongoose');
 
+const ROLES = ['superAdmin', 'admin', 'accountManager', 'technicalManager', 'billingManager', 'staff', 'client'];
+
 const announcementSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },
   content: { type: String, required: true },
-  priority: {
-    type: String,
-    enum: ['low', 'medium', 'high', 'urgent'],
-    default: 'medium'
-  },
-  status: {
-    type: String,
-    enum: ['draft', 'published', 'archived'],
-    default: 'draft'
-  },
-  targetRoles: [{
-    type: String,
-    enum: ['superadmin', 'admin', 'manager', 'user'],
-  }],
+  priority: { type: String, enum: ['low', 'medium', 'high', 'urgent'], default: 'medium' },
+  status: { type: String, enum: ['draft', 'published', 'archived'], default: 'draft' },
+  targetRoles: [{ type: String, enum: ROLES }],
   publishedAt: { type: Date },
   expiresAt: { type: Date },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },

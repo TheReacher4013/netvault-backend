@@ -89,7 +89,7 @@ exports.createInvoice = async (req, res, next) => {
 
     await invoice.save();
 
-    await Notification.create({
+    await Notification.create({ source: 'system',
       tenantId: req.tenantId,
       type: 'info',
       title: 'Invoice Created',
@@ -142,7 +142,7 @@ exports.updateInvoiceStatus = async (req, res, next) => {
     if (!invoice) return error(res, 'Invoice not found', 404);
 
     if (status === 'paid') {
-      await Notification.create({
+      await Notification.create({ source: 'system',
         tenantId: req.tenantId,
         type: 'payment_received',
         title: 'Payment Received',

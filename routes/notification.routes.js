@@ -2,9 +2,13 @@ const express = require('express');
 const router = express.Router();
 const protect = require('../middleware/auth.middleware');
 const ctrl = require('../controllers/notification.controller');
+
 router.use(protect);
 router.get('/', ctrl.getNotifications);
+router.post('/', ctrl.createNotification);
 router.patch('/read-all', ctrl.markAllRead);
 router.patch('/:id/read', ctrl.markRead);
+router.put('/:id', ctrl.updateNotification);
 router.delete('/:id', ctrl.deleteNotification);
+
 module.exports = router;

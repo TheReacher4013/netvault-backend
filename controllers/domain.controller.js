@@ -75,7 +75,7 @@ exports.addDomain = async (req, res, next) => {
     await domain.populate('clientId', 'name email');
     await domain.populate('hostingId', 'label serverIP planType');
 
-    await Notification.create({
+    await Notification.create({ source: 'system',
       tenantId: req.tenantId, type: 'info',
       title: 'New Domain Added',
       message: `Domain ${domain.name} has been added successfully.`,

@@ -1,8 +1,86 @@
 const mongoose = require('mongoose');
 const Domain = require('../models/Domain.model');
 const Hosting = require('../models/Hosting.model');
+const Report = require('../models/Report.model');
 const { Client, Invoice } = require('../models/index');
 const { success, error } = require('../utils/apiResponse');
+
+// ─── CRUD for Report model (superAdmin manages, others view) ──────────────────
+
+// @GET /api/reports — list reports (superAdmin sees all, others see their tenant's)
+exports.getAllReports = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 10, type, status } = req.query;
+    const query = {};
+    if (req.user?.role !== 'superAdmin') query.createdBy = req.user._id; // others only see own
+    if (type) query.type = type;
+    if (status) query.status = status;
+
+    const total = await Report.countDocuments(query);
+    const reports = await Report.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+      .populate('createdBy', 'name email');
+
+    return success(res, { reports, total, page: Number(page), pages: Math.ceil(total / limit) });
+  } catch (err) { next(err); }
+};
+
+// @POST /api/reports — superAdmin creates a report
+exports.createReport = async (req, res, next) => {
+  try {
+    if (req.user?.role !== 'superAdmin') return error(res, 'Forbidden', 403);
+    const { title, description, type, format, filters } = req.body;
+    const report = await Report.create({
+      title, description, type, format, filters,
+      createdBy: req.user._id,
+      status: 'pending',
+    });
+    return success(res, { report }, 'Report created', 201);
+  } catch (err) { next(err); }
+};
+
+// @PUT /api/reports/:id — superAdmin updates
+exports.updateReport = async (req, res, next) => {
+  try {
+    if (req.user?.role !== 'superAdmin') return error(res, 'Forbidden', 403);
+    const { title, description, type, format, filters, status } = req.body;
+    const report = await Report.findByIdAndUpdate(
+      req.params.id,
+      { title, description, type, format, filters, status },
+      { new: true, runValidators: true }
+    );
+    if (!report) return error(res, 'Not found', 404);
+    return success(res, { report }, 'Report updated');
+  } catch (err) { next(err); }
+};
+
+// @DELETE /api/reports/:id — superAdmin deletes
+exports.deleteReport = async (req, res, next) => {
+  try {
+    if (req.user?.role !== 'superAdmin') return error(res, 'Forbidden', 403);
+    const report = await Report.findByIdAndDelete(req.params.id);
+    if (!report) return error(res, 'Not found', 404);
+    return success(res, {}, 'Report deleted');
+  } catch (err) { next(err); }
+};
+
+// @POST /api/reports/:id/regenerate — superAdmin re-queues
+exports.regenerateReport = async (req, res, next) => {
+  try {
+    if (req.user?.role !== 'superAdmin') return error(res, 'Forbidden', 403);
+    const report = await Report.findByIdAndUpdate(
+      req.params.id,
+      { status: 'pending', data: undefined, fileUrl: undefined, generatedAt: undefined },
+      { new: true }
+    );
+    if (!report) return error(res, 'Not found', 404);
+    return success(res, { report }, 'Report queued for regeneration');
+  } catch (err) { next(err); }
+};
+
+// ─── Analytics endpoints (existing, for tenant use) ───────────────────────────
 
 
 exports.getRenewalReport = async (req, res, next) => {

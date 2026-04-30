@@ -96,7 +96,7 @@ const pingServer = async (hosting) => {
         await mailerService.sendServerDownAlert(admin.email, admin.name, hosting.label);
       }
 
-      await Notification.create({
+      await Notification.create({ source: 'system',
         tenantId: hosting.tenantId,
         type: 'server_down',
         title: `Server Down: ${hosting.label}`,
@@ -123,7 +123,7 @@ const pingServer = async (hosting) => {
     logger.info(`Server RECOVERED: ${hosting.label}`);
 
     try {
-      await Notification.create({
+      await Notification.create({ source: 'system',
         tenantId: hosting.tenantId,
         type: 'info',
         title: `Server Recovered: ${hosting.label}`,

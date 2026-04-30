@@ -4,6 +4,9 @@ const protect = require('../middleware/auth.middleware');
 const checkRole = require('../middleware/role.middleware');
 const ctrl = require('../controllers/coupon.controller');
 
+// ── Public routes (no auth) ───────────────────────────────────────────────────
+router.get('/coupons/public', ctrl.getPublicCoupons);
+
 router.use(protect);
 
 // ── Coupon routes ─────────────────────────────────────────────────────────────

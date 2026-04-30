@@ -73,7 +73,7 @@ exports.addClient = async (req, res, next) => {
       }
     }
 
-    await Notification.create({
+    await Notification.create({ source: 'system',
       tenantId: req.tenantId,
       type: 'new_client',
       title: 'New Client Added',
