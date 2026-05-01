@@ -4,17 +4,14 @@ const Hosting = require('../models/Hosting.model');
 const { Client } = require('../models/index');
 const { error } = require('../utils/apiResponse');
 
-// ── Shared helper ─────
 const checkLimit = async (req, res, next, Model, tenantField, limitField, resourceName) => {
     try {
-        // SuperAdmin is never limited
         if (req.user?.role === 'superAdmin') return next();
 
         const tenant = await Tenant.findById(req.tenantId).select(limitField);
         if (!tenant) return error(res, 'Tenant not found', 404);
 
         const limit = tenant[limitField];
-        // Unlimited if limit is 0 or very large (99999)
         if (!limit || limit >= 99999) return next();
 
         const current = await Model.countDocuments({ tenantId: req.tenantId });

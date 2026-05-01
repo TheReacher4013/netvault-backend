@@ -23,7 +23,7 @@ const getTransporter = () => {
   return _transporter;
 };
 
-const sendMail = async (to, subject, html) => {
+const sendMail = exports.sendMail = async (to, subject, html) => {
   try {
     const transporter = getTransporter();
     await transporter.sendMail({

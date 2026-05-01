@@ -5,14 +5,12 @@ const Report = require('../models/Report.model');
 const { Client, Invoice } = require('../models/index');
 const { success, error } = require('../utils/apiResponse');
 
-// ─── CRUD for Report model (superAdmin manages, others view) ──────────────────
 
-// @GET /api/reports — list reports (superAdmin sees all, others see their tenant's)
 exports.getAllReports = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, type, status } = req.query;
     const query = {};
-    if (req.user?.role !== 'superAdmin') query.createdBy = req.user._id; // others only see own
+    if (req.user?.role !== 'superAdmin') query.createdBy = req.user._id; 
     if (type) query.type = type;
     if (status) query.status = status;
 

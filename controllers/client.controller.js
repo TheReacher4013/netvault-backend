@@ -8,7 +8,7 @@ const mailerService = require('../services/mailer.service');
 const audit = require('../utils/audit');
 const logger = require('../utils/logger');
 
-// ── GET /api/clients ─────────────────────────────────────────────────────
+
 exports.getClients = async (req, res, next) => {
   try {
     const { page = 1, limit = 20, search, isActive } = req.query;

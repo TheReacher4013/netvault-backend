@@ -3,7 +3,7 @@ const User = require('../models/User.model');
 const mailer = require('../services/mailer.service');
 const { success, error } = require('../utils/apiResponse');
 
-// Send announcement email to all relevant users
+
 const sendAnnouncementEmails = async (announcement) => {
   try {
     const roleFilter = announcement.targetRoles?.length > 0

@@ -4,7 +4,7 @@ const protect = require('../middleware/auth.middleware');
 const checkRole = require('../middleware/role.middleware');
 const ctrl = require('../controllers/clientPortal.controller');
 
-// Require auth + specifically the 'client' role
+
 router.use(protect);
 router.use(checkRole('client'));
 

@@ -22,6 +22,7 @@ const billingRoutes = require('./routes/billing.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const alertRoutes = require('./routes/alert.routes');
 const reportRoutes = require('./routes/report.routes');
+const reportDataRoutes = require('./routes/reportData.routes');
 const announcementRoutes = require('./routes/announcement.routes');
 const userRoutes = require('./routes/user.routes');
 const uptimeRoutes = require('./routes/uptime.routes');
@@ -51,6 +52,7 @@ app.set('io', io);
 require('./jobs/expiryChecker');
 require('./jobs/uptimeChecker');
 require('./jobs/domainMonitor');
+require('./jobs/reportEmailJob').startReportEmailCron();
 
 io.on('connection', (socket) => {
   logger.info(`Socket connected: ${socket.id}`);
@@ -132,6 +134,7 @@ app.use('/api/hosting', checkPlanApproved, hostingRoutes);
 app.use('/api/clients', checkPlanApproved, clientRoutes);
 app.use('/api/billing', checkPlanApproved, billingRoutes);
 app.use('/api/reports', checkPlanApproved, reportRoutes);
+app.use('/api/report-data', reportDataRoutes);
 app.use('/api/uptime', checkPlanApproved, uptimeRoutes);
 app.use('/api/users', checkPlanApproved, userRoutes);
 app.use('/api/activity', checkPlanApproved, activityRoutes);

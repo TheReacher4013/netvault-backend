@@ -7,7 +7,6 @@ const audit = require('../utils/audit');
 
 const hashToken = (raw) => crypto.createHash('sha256').update(raw).digest('hex');
 
-// ── GET /api/invite/verify/:token ──────
 exports.verifyInvite = async (req, res, next) => {
     try {
         const hashed = hashToken(req.params.token);

@@ -12,7 +12,7 @@ const ClientSchema = new mongoose.Schema({
 
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 
-  //  NEW: invite flow — admin creates client, then invites them to set password
+
   inviteToken: { type: String, select: false },
   inviteTokenExpire: { type: Date, select: false },
 
@@ -188,4 +188,20 @@ const PlanSchema = new mongoose.Schema({
 
 const Plan = mongoose.model('Plan', PlanSchema);
 
-module.exports = { Client, Invoice, Credential, Notification, UptimeLog, Plan };
+
+// ── ReportEmailSchedule ───────────────────────────────────────────────────────
+// Stores email recipients for daily scheduled report delivery
+const ReportEmailScheduleSchema = new mongoose.Schema({
+  tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', default: null }, // null = superAdmin global
+  scope: { type: String, enum: ['superAdmin', 'admin'], required: true },
+  emails: [{ type: String, trim: true, lowercase: true }],
+  sendTime: { type: String, default: '18:00' }, // HH:MM 24h format
+  timezone: { type: String, default: 'Asia/Kolkata' },
+  enabled: { type: Boolean, default: true },
+  lastSentAt: { type: Date },
+}, { timestamps: true });
+
+ReportEmailScheduleSchema.index({ tenantId: 1, scope: 1 }, { unique: true });
+const ReportEmailSchedule = mongoose.model('ReportEmailSchedule', ReportEmailScheduleSchema);
+
+module.exports = { Client, Invoice, Credential, Notification, UptimeLog, Plan, ReportEmailSchedule };

@@ -15,7 +15,6 @@ const logger = require('../utils/logger');
 const audit = require('../utils/audit');
 const otpController = require('./otp.controller');
 
-// ── helpers ─────────────────────────────────────────────────────────────────
 const issueTempToken = (userId) =>
   jwt.sign({ id: userId, purpose: '2fa-pending' }, process.env.JWT_SECRET, { expiresIn: '5m' });
 

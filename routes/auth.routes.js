@@ -1,4 +1,3 @@
-// routes/auth.routes.js
 const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
@@ -6,7 +5,6 @@ const ctrl = require('../controllers/auth.controller');
 const protect = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate.middleware');
 
-// ── Registration + basic login ─────
 router.post('/register', [
   body('orgName').notEmpty().withMessage('Organisation name required'),
   body('name').notEmpty().withMessage('Name required'),

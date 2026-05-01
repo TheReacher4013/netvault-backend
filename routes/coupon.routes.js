@@ -4,16 +4,15 @@ const protect = require('../middleware/auth.middleware');
 const checkRole = require('../middleware/role.middleware');
 const ctrl = require('../controllers/coupon.controller');
 
-// ── Public routes (no auth) ───────────────────────────────────────────────────
+
 router.get('/coupons/public', ctrl.getPublicCoupons);
 
 router.use(protect);
 
-// ── Coupon routes ─────────────────────────────────────────────────────────────
+
 router.get('/coupons', checkRole('superAdmin', 'admin'), ctrl.getCoupons);
 router.post('/coupons', checkRole('superAdmin'), ctrl.createCoupon);
 
-// IMPORTANT: /validate must be BEFORE /:id
 router.post('/coupons/validate', checkRole('admin', 'staff', 'billingManager'), ctrl.validateCoupon);
 
 router.get('/coupons/:id', checkRole('superAdmin'), ctrl.getCoupon);
@@ -21,7 +20,7 @@ router.put('/coupons/:id', checkRole('superAdmin'), ctrl.updateCoupon);
 router.delete('/coupons/:id', checkRole('superAdmin'), ctrl.deleteCoupon);
 router.patch('/coupons/:id/toggle', checkRole('superAdmin'), ctrl.toggleCoupon);
 
-// ── Referral routes ───────────────────────────────────────────────────────────
+
 router.get('/referrals/my', checkRole('admin'), ctrl.getMyReferral);
 router.get('/referrals', checkRole('superAdmin'), ctrl.getAllReferrals);
 router.post('/referrals/apply', ctrl.applyReferral);

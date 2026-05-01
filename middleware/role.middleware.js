@@ -10,7 +10,6 @@ const ROLE_PERMISSIONS = {
   client: ['portal'],
 };
 
-// Simple role check — can this role do this action?
 const checkRole = (...allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) return error(res, 'Not authenticated', 401);
