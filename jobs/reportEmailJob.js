@@ -1,17 +1,22 @@
-
-const cron    = require('node-cron');
-const Tenant  = require('../models/Tenant.model');
-const User    = require('../models/User.model');
-const Domain  = require('../models/Domain.model');
+/**
+ * reportEmailJob.js
+ * Runs every minute, checks which schedules are due at the current HH:MM,
+ * collects report data, and sends HTML emails to all registered recipients.
+ */
+const cron = require('node-cron');
+const Tenant = require('../models/Tenant.model');
+const User = require('../models/User.model');
+const Domain = require('../models/Domain.model');
 const Hosting = require('../models/Hosting.model');
 const { Client, Invoice, ReportEmailSchedule } = require('../models/index');
-const mailer  = require('../services/mailer.service');
-const logger  = require('../utils/logger');
+const mailer = require('../services/mailer.service');
+const logger = require('../utils/logger');
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0 });
 const fmtMoney = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
-const fmtDate  = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 const tableRow = (label, value, color = '#111827') =>
   `<tr>
@@ -29,7 +34,7 @@ const section = (title, icon, rows) => `
     </table>
   </div>`;
 
-
+// ── SuperAdmin report builder ─────────────────────────────────────────────────
 
 async function buildSuperAdminReport() {
   const tenants = await Tenant.find().populate('adminId', 'name email').sort({ createdAt: -1 }).lean();
@@ -42,13 +47,13 @@ async function buildSuperAdminReport() {
     Invoice.aggregate([{ $match: { tenantId: { $in: tenantIds } } }, { $group: { _id: '$tenantId', total: { $sum: '$total' } } }]),
   ]);
 
-  const dcMap  = Object.fromEntries(domainCounts.map(x => [x._id.toString(), x.count]));
-  const clMap  = Object.fromEntries(clientCounts.map(x => [x._id.toString(), x.count]));
+  const dcMap = Object.fromEntries(domainCounts.map(x => [x._id.toString(), x.count]));
+  const clMap = Object.fromEntries(clientCounts.map(x => [x._id.toString(), x.count]));
   const revMap = Object.fromEntries(invoiceCounts.map(x => [x._id.toString(), x.total]));
 
-  const active    = tenants.filter(t => t.planStatus === 'active').length;
+  const active = tenants.filter(t => t.planStatus === 'active').length;
   const suspended = tenants.filter(t => t.planStatus === 'suspended').length;
-  const expiring  = tenants.filter(t => {
+  const expiring = tenants.filter(t => {
     if (!t.subscriptionEnd) return false;
     const d = Math.ceil((new Date(t.subscriptionEnd) - now) / 86400000);
     return d <= 30 && d > 0;
@@ -59,7 +64,7 @@ async function buildSuperAdminReport() {
   // Build company rows for the table
   const companyRows = tenants.slice(0, 20).map(t => {
     const id = t._id.toString();
-    const subEnd   = t.subscriptionEnd ? fmtDate(t.subscriptionEnd) : 'No expiry';
+    const subEnd = t.subscriptionEnd ? fmtDate(t.subscriptionEnd) : 'No expiry';
     const daysLeft = t.subscriptionEnd
       ? Math.ceil((new Date(t.subscriptionEnd) - now) / 86400000) : null;
     const statusColor = t.planStatus === 'active' ? '#16A34A' : t.planStatus === 'suspended' ? '#DC2626' : '#D97706';
@@ -77,7 +82,7 @@ async function buildSuperAdminReport() {
 
   const summarySection = section('Platform Summary', '🏢',
     tableRow('Total Companies', fmt(tenants.length)) +
-    tableRow('Active',    fmt(active),    '#16A34A') +
+    tableRow('Active', fmt(active), '#16A34A') +
     tableRow('Suspended', fmt(suspended), '#DC2626') +
     tableRow('Expiring Soon (≤30d)', fmt(expiring), '#D97706') +
     tableRow('Total Revenue (all time)', fmtMoney(totalRevenue), '#6366F1')
@@ -104,10 +109,11 @@ async function buildSuperAdminReport() {
   return { summarySection, companySection };
 }
 
+// ── Admin report builder ──────────────────────────────────────────────────────
 
 async function buildAdminReport(tenantId) {
   const tid = tenantId;
-  const now   = new Date();
+  const now = new Date();
   const month = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const [
@@ -125,7 +131,7 @@ async function buildAdminReport(tenantId) {
     Hosting.countDocuments({ tenantId: tid, status: 'expiring' }),
     Client.countDocuments({ tenantId: tid }),
     Client.countDocuments({ tenantId: tid, status: 'active' }),
-    User.countDocuments({ tenantId: tid, role: { $in: ['admin','accountManager','technicalManager','billingManager','staff'] } }),
+    User.countDocuments({ tenantId: tid, role: { $in: ['admin', 'staff'] } }),
     Invoice.aggregate([
       { $match: { tenantId: tid } },
       { $group: { _id: '$status', count: { $sum: 1 }, total: { $sum: '$total' } } },
@@ -138,19 +144,19 @@ async function buildAdminReport(tenantId) {
 
   const invByStatus = {};
   invoiceStats.forEach(s => { invByStatus[s._id] = { count: s.count, total: s.total }; });
-  const totalRevenue   = invByStatus['paid']?.total   || 0;
+  const totalRevenue = invByStatus['paid']?.total || 0;
   const overdueRevenue = invByStatus['overdue']?.total || 0;
-  const thisMonthRev   = monthRevenue[0]?.total || 0;
+  const thisMonthRev = monthRevenue[0]?.total || 0;
 
   const domainSection = section('Domains', '🌐',
-    tableRow('Total Domains',   fmt(totalDomains)) +
-    tableRow('Expiring Soon',   fmt(expiringDomains), '#D97706') +
-    tableRow('Expired',         fmt(expiredDomains),  '#DC2626')
+    tableRow('Total Domains', fmt(totalDomains)) +
+    tableRow('Expiring Soon', fmt(expiringDomains), '#D97706') +
+    tableRow('Expired', fmt(expiredDomains), '#DC2626')
   );
 
   const hostingSection = section('Hosting', '🖥️',
     tableRow('Total Hosting Plans', fmt(totalHosting)) +
-    tableRow('Expiring Soon',       fmt(expiringHosting), '#D97706')
+    tableRow('Expiring Soon', fmt(expiringHosting), '#D97706')
   );
 
   const clientSection = section('Clients & Staff', '👥',
@@ -160,13 +166,13 @@ async function buildAdminReport(tenantId) {
   );
 
   const billingSection = section('Billing & Revenue', '💰',
-    tableRow('Total Invoices',   fmt(Object.values(invByStatus).reduce((s, x) => s + x.count, 0))) +
-    tableRow('Paid',             fmt(invByStatus['paid']?.count   || 0), '#16A34A') +
-    tableRow('Pending',          fmt(invByStatus['pending']?.count || 0), '#D97706') +
-    tableRow('Overdue',          fmt(invByStatus['overdue']?.count || 0), '#DC2626') +
-    tableRow('Total Revenue',    fmtMoney(totalRevenue),   '#6366F1') +
-    tableRow('This Month',       fmtMoney(thisMonthRev),   '#6366F1') +
-    tableRow('Overdue Amount',   fmtMoney(overdueRevenue), '#DC2626')
+    tableRow('Total Invoices', fmt(Object.values(invByStatus).reduce((s, x) => s + x.count, 0))) +
+    tableRow('Paid', fmt(invByStatus['paid']?.count || 0), '#16A34A') +
+    tableRow('Pending', fmt(invByStatus['pending']?.count || 0), '#D97706') +
+    tableRow('Overdue', fmt(invByStatus['overdue']?.count || 0), '#DC2626') +
+    tableRow('Total Revenue', fmtMoney(totalRevenue), '#6366F1') +
+    tableRow('This Month', fmtMoney(thisMonthRev), '#6366F1') +
+    tableRow('Overdue Amount', fmtMoney(overdueRevenue), '#DC2626')
   );
 
   return { domainSection, hostingSection, clientSection, billingSection };

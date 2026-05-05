@@ -36,6 +36,7 @@ const plansRoutes = require('./routes/plans.routes');
 const otpRoutes = require('./routes/otp.routes');
 const chatRoutes = require('./routes/chat.routes');
 const couponRoutes = require('./routes/coupon.routes');
+const emailTemplateRoutes = require('./routes/emailTemplate.routes')
 
 const app = express();
 const server = http.createServer(app);
@@ -139,6 +140,7 @@ app.use('/api/uptime', checkPlanApproved, uptimeRoutes);
 app.use('/api/users', checkPlanApproved, userRoutes);
 app.use('/api/activity', checkPlanApproved, activityRoutes);
 app.use('/api/whois', checkPlanApproved, whoisRoutes);
+app.use('/api/super-admin/email-templates', emailTemplateRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'NetVault API running', timestamp: new Date() });

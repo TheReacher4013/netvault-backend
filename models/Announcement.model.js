@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const ROLES = ['superAdmin', 'admin', 'accountManager', 'technicalManager', 'billingManager', 'staff', 'client'];
+const ROLES = ['superAdmin', 'admin', 'staff', 'client'];
 
 const announcementSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },

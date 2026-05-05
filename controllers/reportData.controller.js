@@ -1,7 +1,7 @@
-const Tenant       = require('../models/Tenant.model');
-const User         = require('../models/User.model');
-const Domain       = require('../models/Domain.model');
-const Hosting      = require('../models/Hosting.model');
+const Tenant = require('../models/Tenant.model');
+const User = require('../models/User.model');
+const Domain = require('../models/Domain.model');
+const Hosting = require('../models/Hosting.model');
 const { Client, Invoice, ReportEmailSchedule } = require('../models/index');
 const { success, error } = require('../utils/apiResponse');
 
@@ -32,49 +32,49 @@ exports.getSuperAdminSummary = async (req, res, next) => {
     const hcMap = toMap(hostingCounts);
     const clMap = toMap(clientCounts);
     const ucMap = toMap(userCounts);
-    const invMap  = toMap(invoiceCounts, 'total');
+    const invMap = toMap(invoiceCounts, 'total');
     const invCMap = toMap(invoiceCounts, 'count');
 
     const companies = tenants.map(t => {
       const id = t._id.toString();
       const subEnd = t.subscriptionEnd ? new Date(t.subscriptionEnd) : null;
-      const today  = new Date();
+      const today = new Date();
       const daysLeft = subEnd ? Math.ceil((subEnd - today) / 86400000) : null;
 
       return {
         _id: t._id,
         orgName: t.orgName,
-        adminName:  t.adminId?.name  || '—',
+        adminName: t.adminId?.name || '—',
         adminEmail: t.adminId?.email || '—',
-        planName:     t.planName || 'Free',
-        planStatus:   t.planStatus || 'active',
+        planName: t.planName || 'Free',
+        planStatus: t.planStatus || 'active',
         subscriptionStart: t.subscriptionStart,
-        subscriptionEnd:   t.subscriptionEnd,
+        subscriptionEnd: t.subscriptionEnd,
         daysLeft,
-        isExpired:  subEnd ? subEnd < today : false,
+        isExpired: subEnd ? subEnd < today : false,
         isExpiring: daysLeft != null && daysLeft <= 30 && daysLeft > 0,
-        isActive:   t.isActive,
-        domains:    dcMap[id] || 0,
-        hosting:    hcMap[id] || 0,
-        clients:    clMap[id] || 0,
-        staff:      ucMap[id] || 0,
-        invoices:   invCMap[id] || 0,
-        revenue:    invMap[id]  || 0,
-        createdAt:  t.createdAt,
+        isActive: t.isActive,
+        domains: dcMap[id] || 0,
+        hosting: hcMap[id] || 0,
+        clients: clMap[id] || 0,
+        staff: ucMap[id] || 0,
+        invoices: invCMap[id] || 0,
+        revenue: invMap[id] || 0,
+        createdAt: t.createdAt,
       };
     });
 
     // Platform-level totals
     const totals = {
-      companies:  companies.length,
-      active:     companies.filter(c => c.planStatus === 'active').length,
-      suspended:  companies.filter(c => c.planStatus === 'suspended').length,
+      companies: companies.length,
+      active: companies.filter(c => c.planStatus === 'active').length,
+      suspended: companies.filter(c => c.planStatus === 'suspended').length,
       expiringSoon: companies.filter(c => c.isExpiring).length,
-      expired:    companies.filter(c => c.isExpired).length,
-      totalDomains:  companies.reduce((s, c) => s + c.domains,  0),
-      totalHosting:  companies.reduce((s, c) => s + c.hosting,  0),
-      totalClients:  companies.reduce((s, c) => s + c.clients,  0),
-      totalRevenue:  companies.reduce((s, c) => s + c.revenue,  0),
+      expired: companies.filter(c => c.isExpired).length,
+      totalDomains: companies.reduce((s, c) => s + c.domains, 0),
+      totalHosting: companies.reduce((s, c) => s + c.hosting, 0),
+      totalClients: companies.reduce((s, c) => s + c.clients, 0),
+      totalRevenue: companies.reduce((s, c) => s + c.revenue, 0),
     };
 
     return success(res, { companies, totals });
@@ -89,9 +89,9 @@ exports.getAdminSummary = async (req, res, next) => {
   try {
     const tid = req.tenantId;
 
-    const now   = new Date();
+    const now = new Date();
     const month = new Date(now.getFullYear(), now.getMonth(), 1);
-    const prev  = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
     const [
       totalDomains, expiringDomains, expiredDomains,
@@ -109,14 +109,16 @@ exports.getAdminSummary = async (req, res, next) => {
       Hosting.countDocuments({ tenantId: tid, status: 'expiring' }),
       Client.countDocuments({ tenantId: tid }),
       Client.countDocuments({ tenantId: tid, status: 'active' }),
-      User.countDocuments({ tenantId: tid, role: { $in: ['admin','accountManager','technicalManager','billingManager','staff'] } }),
+      User.countDocuments({ tenantId: tid, role: { $in: ['admin', 'staff'] } }),
       Invoice.aggregate([
         { $match: { tenantId: tid } },
-        { $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-          total: { $sum: '$total' },
-        }},
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+            total: { $sum: '$total' },
+          }
+        },
       ]),
       Invoice.aggregate([
         { $match: { tenantId: tid, status: 'paid', createdAt: { $gte: month } } },
@@ -133,27 +135,27 @@ exports.getAdminSummary = async (req, res, next) => {
     // Invoice breakdown
     const invByStatus = {};
     invoiceStats.forEach(s => { invByStatus[s._id] = { count: s.count, total: s.total }; });
-    const totalInvoices   = invoiceStats.reduce((s, x) => s + x.count, 0);
-    const totalRevenue    = (invByStatus['paid']?.total    || 0);
-    const overdueRevenue  = (invByStatus['overdue']?.total || 0);
-    const pendingRevenue  = (invByStatus['pending']?.total || 0);
-    const thisMonthRev    = monthRevenue[0]?.total || 0;
-    const prevMonthRev    = prevRevenue[0]?.total  || 0;
-    const revenueGrowth   = prevMonthRev > 0
+    const totalInvoices = invoiceStats.reduce((s, x) => s + x.count, 0);
+    const totalRevenue = (invByStatus['paid']?.total || 0);
+    const overdueRevenue = (invByStatus['overdue']?.total || 0);
+    const pendingRevenue = (invByStatus['pending']?.total || 0);
+    const thisMonthRev = monthRevenue[0]?.total || 0;
+    const prevMonthRev = prevRevenue[0]?.total || 0;
+    const revenueGrowth = prevMonthRev > 0
       ? (((thisMonthRev - prevMonthRev) / prevMonthRev) * 100).toFixed(1)
       : null;
 
     return success(res, {
-      domains:  { total: totalDomains, expiring: expiringDomains, expired: expiredDomains },
-      hosting:  { total: totalHosting, expiring: expiringHosting },
-      clients:  { total: totalClients, active: activeClients },
-      staff:    { total: staffUsers },
+      domains: { total: totalDomains, expiring: expiringDomains, expired: expiredDomains },
+      hosting: { total: totalHosting, expiring: expiringHosting },
+      clients: { total: totalClients, active: activeClients },
+      staff: { total: staffUsers },
       invoices: {
         total: totalInvoices,
-        paid:     invByStatus['paid']?.count    || 0,
-        pending:  invByStatus['pending']?.count  || 0,
-        overdue:  invByStatus['overdue']?.count  || 0,
-        draft:    invByStatus['draft']?.count    || 0,
+        paid: invByStatus['paid']?.count || 0,
+        pending: invByStatus['pending']?.count || 0,
+        overdue: invByStatus['overdue']?.count || 0,
+        draft: invByStatus['draft']?.count || 0,
         totalRevenue, overdueRevenue, pendingRevenue,
         thisMonthRevenue: thisMonthRev,
         prevMonthRevenue: prevMonthRev,

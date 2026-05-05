@@ -8,6 +8,7 @@ const qrcode = require('qrcode');
 const User = require('../models/User.model');
 const Tenant = require('../models/Tenant.model');
 const { Plan } = require('../models/index');
+const { Referral } = require('../models/coupon.model');
 const generateToken = require('../utils/generateToken');
 const { success, error } = require('../utils/apiResponse');
 const mailerService = require('../services/mailer.service');
@@ -43,7 +44,7 @@ exports.register = async (req, res, next) => {
     && (process.env.MONGO_TRANSACTIONS !== 'false');
 
   try {
-    const { orgName, name, email, password, phone, planId } = req.body;
+    const { orgName, name, email, password, phone, planId, referralCode } = req.body;
     const normalizedEmail = (email || '').trim().toLowerCase();
 
     // Basic validation
@@ -135,6 +136,29 @@ exports.register = async (req, res, next) => {
     // Consume verified OTP token
     await otpController.consumeVerifiedToken(normalizedEmail);
 
+
+    // Apply referral code if provided
+    if (referralCode) {
+      try {
+        const referral = await Referral.findOne({
+          referralCode: referralCode.toUpperCase().trim(),
+          isActive: true,
+        });
+        if (referral && referral.referrerTenantId.toString() !== tenant._id.toString()) {
+          const alreadyUsed = referral.referredTenants.some(
+            r => r.tenantId?.toString() === tenant._id.toString()
+          );
+          if (!alreadyUsed) {
+            referral.referredTenants.push({ tenantId: tenant._id, status: 'pending' });
+            referral.totalReferrals += 1;
+            await referral.save();
+            logger.info(`Referral ${referralCode} applied for new tenant ${tenant._id}`);
+          }
+        }
+      } catch (refErr) {
+        logger.error(`Referral apply failed for code ${referralCode}: ${refErr.message}`);
+      }
+    }
     const token = generateToken(user);
 
     mailerService.sendWelcomeEmail(normalizedEmail, name, orgName).catch(err =>

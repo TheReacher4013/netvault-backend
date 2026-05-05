@@ -3,13 +3,11 @@ const { error } = require('../utils/apiResponse');
 const ROLE_PERMISSIONS = {
   superAdmin: ['all'],
   admin: ['domains', 'hosting', 'clients', 'billing', 'vault', 'users', 'settings', 'reports'],
-  accountManager: ['domains:read', 'hosting:read', 'clients', 'billing:read', 'vault:read'],
-  technicalManager: ['domains', 'hosting', 'clients:read', 'vault', 'billing:read'],
-  billingManager: ['billing', 'clients:read', 'domains:read', 'hosting:read', 'reports'],
   staff: ['domains', 'hosting', 'clients', 'billing:create', 'vault:read'],
   client: ['portal'],
 };
 
+// Simple role check — can this role do this action?
 const checkRole = (...allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) return error(res, 'Not authenticated', 401);

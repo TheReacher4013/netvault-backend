@@ -96,28 +96,56 @@ exports.validateCoupon = async (req, res, next) => {
     try {
         const { code, orderAmount = 0 } = req.body;
         if (!code) return error(res, 'Coupon code is required', 400);
-        const coupon = await Coupon.findOne({ code: code.toUpperCase().trim() });
-        if (!coupon) return error(res, 'Invalid coupon code', 404);
+        const normalizedCode = code.toUpperCase().trim();
 
-        // Validate
-        if (!coupon.isActive) return error(res, 'Coupon is inactive', 400);
-        if (coupon.expiresAt && new Date() > coupon.expiresAt) return error(res, 'Coupon has expired', 400);
-        if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) return error(res, 'Coupon usage limit reached', 400);
-        if (orderAmount < coupon.minOrderAmount) return error(res, `Minimum order amount is Rs ${coupon.minOrderAmount}`, 400);
+        // ── 1. Check Coupon collection first ────────────────────────────────
+        const coupon = await Coupon.findOne({ code: normalizedCode });
+        if (coupon) {
+            if (!coupon.isActive) return error(res, 'Coupon is inactive', 400);
+            if (coupon.expiresAt && new Date() > coupon.expiresAt) return error(res, 'Coupon has expired', 400);
+            if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) return error(res, 'Coupon usage limit reached', 400);
+            if (orderAmount < coupon.minOrderAmount) return error(res, `Minimum order amount is ₹${coupon.minOrderAmount}`, 400);
 
-        // Calculate discount
-        let discountAmount = 0;
-        if (coupon.discountType === 'percentage') {
-            discountAmount = Math.round((orderAmount * coupon.discountValue) / 100);
-        } else {
-            discountAmount = Math.min(coupon.discountValue, orderAmount);
+            let discountAmount = 0;
+            if (coupon.discountType === 'percentage') {
+                discountAmount = Math.round((orderAmount * coupon.discountValue) / 100);
+            } else {
+                discountAmount = Math.min(coupon.discountValue, orderAmount);
+            }
+            return success(res, {
+                type: 'coupon',
+                coupon: { _id: coupon._id, code: coupon.code, description: coupon.description, discountType: coupon.discountType, discountValue: coupon.discountValue },
+                discountAmount,
+                finalAmount: orderAmount - discountAmount,
+            }, 'Coupon applied successfully');
         }
 
-        return success(res, {
-            coupon: { _id: coupon._id, code: coupon.code, description: coupon.description, discountType: coupon.discountType, discountValue: coupon.discountValue },
-            discountAmount,
-            finalAmount: orderAmount - discountAmount,
-        }, 'Coupon is valid');
+        // ── 2. Fallback: check Referral collection ───────────────────────────
+        const referral = await Referral.findOne({ referralCode: normalizedCode, isActive: true });
+        if (referral) {
+            const reward = referral.referredReward || { type: 'percentage', value: 10 };
+            let discountAmount = 0;
+            if (reward.type === 'percentage') {
+                discountAmount = Math.round((orderAmount * reward.value) / 100);
+            } else {
+                discountAmount = Math.min(reward.value, orderAmount);
+            }
+            return success(res, {
+                type: 'referral',
+                coupon: {
+                    _id: referral._id,
+                    code: referral.referralCode,
+                    description: `Referral code — ${reward.value}${reward.type === 'percentage' ? '%' : '₹'} off your first invoice`,
+                    discountType: reward.type,
+                    discountValue: reward.value,
+                },
+                discountAmount,
+                finalAmount: orderAmount - discountAmount,
+            }, 'Referral code applied successfully');
+        }
+
+        // ── 3. Nothing found ─────────────────────────────────────────────────
+        return error(res, 'Invalid coupon or referral code', 400);
     } catch (err) { next(err); }
 };
 

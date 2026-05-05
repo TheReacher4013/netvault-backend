@@ -5,7 +5,7 @@ const UserSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   password: { type: String, required: true, minlength: 6, select: false },
-  role: { type: String, enum: ['superAdmin', 'admin', 'accountManager', 'technicalManager', 'billingManager', 'staff', 'client'], default: 'staff' },
+  role: { type: String, enum: ['superAdmin', 'admin', 'staff', 'client'], default: 'staff' },
   tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant' },
   phone: { type: String, trim: true },
   avatar: { type: String },
