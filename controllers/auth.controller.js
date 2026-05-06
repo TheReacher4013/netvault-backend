@@ -44,12 +44,11 @@ exports.register = async (req, res, next) => {
     && (process.env.MONGO_TRANSACTIONS !== 'false');
 
   try {
-    const { orgName, name, email, password, phone, planId, referralCode } = req.body;
+    const { orgName, name, email, password, phone, planId, referralCode, countryCode, country } = req.body;
     const normalizedEmail = (email || '').trim().toLowerCase();
 
-    // Basic validation
-    if (!orgName?.trim()) return error(res, 'Organisation name is required', 400);
-    if (!name?.trim()) return error(res, 'Your name is required', 400);
+    // Basic validation — only email + password required at registration.
+    // orgName and name are optional and can be set later in Profile settings.
     if (!normalizedEmail) return error(res, 'Email is required', 400);
     if (!password || password.length < 6) return error(res, 'Password must be at least 6 characters', 400);
 
@@ -70,21 +69,36 @@ exports.register = async (req, res, next) => {
       if (!selectedPlan) return error(res, 'Selected plan is invalid or inactive', 400);
     }
 
-    const trialDays = selectedPlan?.trialDays ?? 14;
+    // All plans get a 7-day free trial
+    const TRIAL_DAYS = 7;
+    const trialStartDate = new Date();
+    const trialEndDate = new Date(Date.now() + TRIAL_DAYS * 86400000);
+
+    const trialDays = selectedPlan?.trialDays ?? TRIAL_DAYS;
     const subscriptionEnd = new Date(Date.now() + trialDays * 86400000);
 
-    const planStatus =
-      !selectedPlan ? 'active' :
-        selectedPlan.price === 0 ? 'active' :
-          'pending';
+    // All new registrations start on trial regardless of plan
+    const planStatus = 'trial';
+
+    // Use email prefix as default name/orgName if not provided at registration
+    const emailPrefix = normalizedEmail.split('@')[0];
+    const resolvedName = name?.trim() || emailPrefix;
+    const resolvedOrgName = orgName?.trim() || '';
 
     const tenantBase = {
-      orgName,
-      planStatus,                          
+      orgName: resolvedOrgName,
+      profileCompleted: !!(orgName?.trim() && name?.trim()),
+      planStatus,
+      isOnTrial: true,
+      trialStartDate,
+      trialEndDate,
+      trialDays: TRIAL_DAYS,
+      countryCode: countryCode || '+91',
+      country: country || 'IN',
       ...(selectedPlan ? {
         planId: selectedPlan._id,
         planName: selectedPlan.name,
-        maxDomains: selectedPlan.maxDomains,   
+        maxDomains: selectedPlan.maxDomains,
         maxClients: selectedPlan.maxClients,
         maxHosting: selectedPlan.maxHosting,
         maxStaff: selectedPlan.maxStaff,
@@ -100,7 +114,8 @@ exports.register = async (req, res, next) => {
       try {
         await session.withTransaction(async () => {
           const userDocs = await User.create([{
-            name, email: normalizedEmail, password, phone,
+            name: resolvedName, email: normalizedEmail, password, phone,
+            countryCode: countryCode || '+91',
             role: 'admin',
             tenantId: new mongoose.Types.ObjectId(),
           }], { session });
@@ -119,7 +134,8 @@ exports.register = async (req, res, next) => {
       }
     } else {
       user = await User.create({
-        name, email: normalizedEmail, password, phone,
+        name: resolvedName, email: normalizedEmail, password, phone,
+        countryCode: countryCode || '+91',
         role: 'admin',
         tenantId: new mongoose.Types.ObjectId(),
       });
@@ -168,7 +184,7 @@ exports.register = async (req, res, next) => {
     req.user = user;
     req.tenantId = tenant._id;
     audit.log(req, 'auth.register', 'tenant', tenant._id, {
-      orgName, email: normalizedEmail,
+      orgName: resolvedOrgName, email: normalizedEmail,
       plan: selectedPlan?.name || null,
       planStatus,
     });
@@ -184,7 +200,7 @@ exports.register = async (req, res, next) => {
         displayName: selectedPlan.displayName,
         trialDays,
       } : null,
-      planStatus,   
+      planStatus,
     },
       planStatus === 'pending'
         ? 'Registration successful. Your plan is pending Super Admin approval.'
@@ -219,6 +235,35 @@ exports.login = async (req, res, next) => {
       return success(res, { requires2FA: true, tempToken }, 'Two-factor code required');
     }
 
+    // ── Trial expiry check ────────────────────────────────────
+    let trialInfo = null;
+    if (user.tenantId && user.role !== 'superAdmin') {
+      const tenant = await Tenant.findById(user.tenantId).select(
+        'isOnTrial trialStartDate trialEndDate planStatus profileCompleted'
+      );
+      if (tenant && tenant.isOnTrial) {
+        const now = new Date();
+        if (tenant.trialEndDate && now > tenant.trialEndDate) {
+          // Mark trial as expired
+          tenant.planStatus = 'trial_expired';
+          tenant.isOnTrial = false;
+          await tenant.save();
+          trialInfo = { trialExpired: true };
+        } else if (tenant.trialEndDate) {
+          const daysRemaining = Math.max(0, Math.ceil((tenant.trialEndDate - now) / 86400000));
+          trialInfo = {
+            isOnTrial: true,
+            daysRemaining,
+            trialEndDate: tenant.trialEndDate,
+            profileCompleted: tenant.profileCompleted || false,
+          };
+        }
+      } else if (tenant && tenant.planStatus === 'trial_expired') {
+        trialInfo = { trialExpired: true };
+      }
+    }
+    // ─────────────────────────────────────────────────────────
+
     user.lastLogin = new Date();
     await user.save({ validateBeforeSave: false });
     req.user = user; req.tenantId = user.tenantId;
@@ -231,7 +276,11 @@ exports.login = async (req, res, next) => {
       user: {
         _id: user._id, name: user.name, email: user.email,
         role: user.role, tenantId: user.tenantId,
+        avatar: user.avatar || null,
+        countryCode: user.countryCode || '+91',
+        phone: user.phone || null,
       },
+      trialInfo,
     }, 'Login successful');
   } catch (err) { next(err); }
 };

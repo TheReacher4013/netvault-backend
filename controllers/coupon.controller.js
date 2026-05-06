@@ -1,3 +1,6 @@
+
+
+
 const { Coupon, Referral } = require('../models/coupon.model');
 const Tenant = require('../models/Tenant.model');
 const { success, error } = require('../utils/apiResponse');
@@ -9,7 +12,7 @@ const genReferralCode = (orgName = '') => {
     return `${base}${rand}`;
 };
 
-//  COUPON 
+// ─── COUPON CRUD ───────────────────────────────────────────────────────────
 
 // Public — no auth required (for register page)
 exports.getPublicCoupons = async (req, res, next) => {
@@ -18,9 +21,8 @@ exports.getPublicCoupons = async (req, res, next) => {
         const coupons = await Coupon.find({
             isActive: true,
             $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
-            $or: [{ maxUses: null }, { $expr: { $lt: ['$usedCount', '$maxUses'] } }],
         })
-            .select('code description discountType discountValue minOrderAmount applicablePlans expiresAt')
+            .select('code description discountType discountValue durationDays minOrderAmount applicablePlans expiresAt')
             .sort({ createdAt: -1 });
         return success(res, { coupons });
     } catch (err) { next(err); }
@@ -37,19 +39,38 @@ exports.getCoupons = async (req, res, next) => {
 
 exports.createCoupon = async (req, res, next) => {
     try {
-        const { code, description, discountType, discountValue, maxUses, minOrderAmount, applicablePlans, expiresAt } = req.body;
-        if (!code || !discountType || !discountValue) {
+        const {
+            code, description, discountType, discountValue,
+            durationDays, maxUses, minOrderAmount, applicablePlans, expiresAt,
+        } = req.body;
+
+        if (!code || !discountType || discountValue === undefined || discountValue === '') {
             return error(res, 'code, discountType and discountValue are required', 400);
         }
+
+        // Duration coupons must have durationDays
+        if (discountType === 'duration') {
+            if (!durationDays || Number(durationDays) < 1) {
+                return error(res, 'Duration coupons require durationDays (minimum 1)', 400);
+            }
+        }
+
+        // Percentage cap
+        if (discountType === 'percentage' && Number(discountValue) > 100) {
+            return error(res, 'Percentage discount cannot exceed 100%', 400);
+        }
+
         const existing = await Coupon.findOne({ code: code.toUpperCase().trim() });
         if (existing) return error(res, 'Coupon code already exists', 409);
+
         const coupon = await Coupon.create({
             code: code.toUpperCase().trim(),
             description,
             discountType,
-            discountValue,
-            maxUses: maxUses || null,
-            minOrderAmount: minOrderAmount || 0,
+            discountValue: Number(discountValue),
+            durationDays: discountType === 'duration' ? Number(durationDays) : null,
+            maxUses: maxUses ? Number(maxUses) : null,
+            minOrderAmount: minOrderAmount ? Number(minOrderAmount) : 0,
             applicablePlans: applicablePlans || [],
             expiresAt: expiresAt || null,
             createdBy: req.user._id,
@@ -68,7 +89,33 @@ exports.getCoupon = async (req, res, next) => {
 
 exports.updateCoupon = async (req, res, next) => {
     try {
-        const coupon = await Coupon.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+        const { discountType, discountValue, durationDays } = req.body;
+
+        // Validate on update too
+        if (discountType === 'duration') {
+            const days = durationDays || req.body.durationDays;
+            if (!days || Number(days) < 1) {
+                return error(res, 'Duration coupons require durationDays (minimum 1)', 400);
+            }
+            req.body.durationDays = Number(days);
+        } else if (discountType) {
+            req.body.durationDays = null;
+        }
+
+        if (discountType === 'percentage' && Number(discountValue) > 100) {
+            return error(res, 'Percentage discount cannot exceed 100%', 400);
+        }
+
+        // When updating to non-duration type, clear durationDays
+        if (discountType && discountType !== 'duration') {
+            req.body.durationDays = null;
+        }
+
+        const coupon = await Coupon.findByIdAndUpdate(
+            req.params.id,
+            req.body,
+            { new: true, runValidators: true }
+        );
         if (!coupon) return error(res, 'Coupon not found', 404);
         return success(res, { coupon }, 'Coupon updated');
     } catch (err) { next(err); }
@@ -92,43 +139,69 @@ exports.toggleCoupon = async (req, res, next) => {
     } catch (err) { next(err); }
 };
 
+// ─── VALIDATE COUPON (used on register / checkout) ─────────────────────────
 exports.validateCoupon = async (req, res, next) => {
     try {
         const { code, orderAmount = 0 } = req.body;
         if (!code) return error(res, 'Coupon code is required', 400);
         const normalizedCode = code.toUpperCase().trim();
+        const amount = Number(orderAmount) || 0;
 
-        // ── 1. Check Coupon collection first ────────────────────────────────
+        // 1. Check Coupon collection ─────────────────────────────────────────
         const coupon = await Coupon.findOne({ code: normalizedCode });
         if (coupon) {
-            if (!coupon.isActive) return error(res, 'Coupon is inactive', 400);
-            if (coupon.expiresAt && new Date() > coupon.expiresAt) return error(res, 'Coupon has expired', 400);
-            if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) return error(res, 'Coupon usage limit reached', 400);
-            if (orderAmount < coupon.minOrderAmount) return error(res, `Minimum order amount is ₹${coupon.minOrderAmount}`, 400);
+            // Always re-check validity against current state
+            if (!coupon.isActive)
+                return error(res, 'Coupon is inactive', 400);
+            if (coupon.expiresAt && new Date() > coupon.expiresAt)
+                return error(res, 'Coupon has expired', 400);
+            if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses)
+                return error(res, 'Coupon usage limit reached', 400);
+
+            // Duration coupons skip the minOrderAmount check
+            if (coupon.discountType !== 'duration' && amount < coupon.minOrderAmount) {
+                return error(res, `Minimum order amount is ₹${coupon.minOrderAmount}`, 400);
+            }
 
             let discountAmount = 0;
+            let extraDays = null;
+
             if (coupon.discountType === 'percentage') {
-                discountAmount = Math.round((orderAmount * coupon.discountValue) / 100);
-            } else {
-                discountAmount = Math.min(coupon.discountValue, orderAmount);
+                discountAmount = Math.round((amount * coupon.discountValue) / 100);
+            } else if (coupon.discountType === 'flat') {
+                discountAmount = Math.min(coupon.discountValue, amount);
+            } else if (coupon.discountType === 'duration') {
+                extraDays = coupon.durationDays;
+                discountAmount = 0;
             }
+
             return success(res, {
                 type: 'coupon',
-                coupon: { _id: coupon._id, code: coupon.code, description: coupon.description, discountType: coupon.discountType, discountValue: coupon.discountValue },
+                coupon: {
+                    _id: coupon._id,
+                    code: coupon.code,
+                    description: coupon.description,
+                    discountType: coupon.discountType,
+                    discountValue: coupon.discountValue,
+                    durationDays: coupon.durationDays,
+                },
                 discountAmount,
-                finalAmount: orderAmount - discountAmount,
-            }, 'Coupon applied successfully');
+                extraDays,
+                finalAmount: Math.max(0, amount - discountAmount),
+            }, coupon.discountType === 'duration'
+                ? `Coupon applied — ${extraDays} extra days added!`
+                : 'Coupon applied successfully');
         }
 
-        // ── 2. Fallback: check Referral collection ───────────────────────────
+        // 2. Fallback: check Referral collection ─────────────────────────────
         const referral = await Referral.findOne({ referralCode: normalizedCode, isActive: true });
         if (referral) {
             const reward = referral.referredReward || { type: 'percentage', value: 10 };
             let discountAmount = 0;
             if (reward.type === 'percentage') {
-                discountAmount = Math.round((orderAmount * reward.value) / 100);
+                discountAmount = Math.round((amount * reward.value) / 100);
             } else {
-                discountAmount = Math.min(reward.value, orderAmount);
+                discountAmount = Math.min(reward.value, amount);
             }
             return success(res, {
                 type: 'referral',
@@ -138,18 +211,20 @@ exports.validateCoupon = async (req, res, next) => {
                     description: `Referral code — ${reward.value}${reward.type === 'percentage' ? '%' : '₹'} off your first invoice`,
                     discountType: reward.type,
                     discountValue: reward.value,
+                    durationDays: null,
                 },
                 discountAmount,
-                finalAmount: orderAmount - discountAmount,
+                extraDays: null,
+                finalAmount: Math.max(0, amount - discountAmount),
             }, 'Referral code applied successfully');
         }
 
-        // ── 3. Nothing found ─────────────────────────────────────────────────
+        // 3. Nothing found ────────────────────────────────────────────────────
         return error(res, 'Invalid coupon or referral code', 400);
     } catch (err) { next(err); }
 };
 
-// REFERRAL 
+// ─── REFERRAL ──────────────────────────────────────────────────────────────
 
 exports.getMyReferral = async (req, res, next) => {
     try {
@@ -190,7 +265,8 @@ exports.applyReferral = async (req, res, next) => {
         if (!referralCode || !newTenantId) return error(res, 'referralCode and newTenantId required', 400);
         const referral = await Referral.findOne({ referralCode: referralCode.toUpperCase(), isActive: true });
         if (!referral) return error(res, 'Invalid referral code', 404);
-        if (referral.referrerTenantId.toString() === newTenantId) return error(res, 'Cannot use your own referral code', 400);
+        if (referral.referrerTenantId.toString() === newTenantId)
+            return error(res, 'Cannot use your own referral code', 400);
         const alreadyUsed = referral.referredTenants.some(r => r.tenantId?.toString() === newTenantId);
         if (alreadyUsed) return error(res, 'Referral already applied', 400);
         referral.referredTenants.push({ tenantId: newTenantId, status: 'pending' });

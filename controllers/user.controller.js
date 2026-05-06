@@ -91,12 +91,13 @@ exports.getProfile = async (req, res, next) => {
 // UPDATED: accepts `email` with uniqueness check
 exports.updateProfile = async (req, res, next) => {
   try {
-    const { name, phone, avatar, email } = req.body;
+    const { name, phone, avatar, email, countryCode } = req.body;
 
     const updates = {};
     if (name !== undefined) updates.name = name;
     if (phone !== undefined) updates.phone = phone;
     if (avatar !== undefined) updates.avatar = avatar;
+    if (countryCode !== undefined) updates.countryCode = countryCode;
 
     // Handle email change with proper validation
     let emailChanged = false;
@@ -136,5 +137,18 @@ exports.updateProfile = async (req, res, next) => {
     }
 
     return success(res, { user }, 'Profile updated');
+  } catch (err) { next(err); }
+};
+// @POST /api/users/profile/avatar
+exports.uploadAvatar = async (req, res, next) => {
+  try {
+    if (!req.file) return error(res, 'No file uploaded', 400);
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { avatar: avatarUrl },
+      { new: true }
+    );
+    return success(res, { avatar: avatarUrl, user }, 'Profile photo updated');
   } catch (err) { next(err); }
 };

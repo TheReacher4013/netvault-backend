@@ -175,6 +175,7 @@ const PlanSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
   displayName: { type: String, required: true },
   price: { type: Number, required: true },
+  currency: { type: String, default: 'INR' },
   billingCycle: { type: String, enum: ['monthly', 'yearly'], default: 'monthly' },
   maxDomains: { type: Number, default: 20 },
   maxClients: { type: Number, default: 10 },
@@ -183,7 +184,9 @@ const PlanSchema = new mongoose.Schema({
   features: [{ type: String }],
   isActive: { type: Boolean, default: true },
   isPopular: { type: Boolean, default: false },
-  trialDays: { type: Number, default: 14 },
+  trialDays: { type: Number, default: 7 },
+  // Countries this plan is available for (empty = all countries)
+  availableCountries: [{ type: String }],
 }, { timestamps: true });
 
 const Plan = mongoose.model('Plan', PlanSchema);

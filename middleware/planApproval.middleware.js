@@ -8,59 +8,72 @@ const WHITELIST = [
     /^\/api\/auth\/2fa\//,
     /^\/api\/users\/profile\b/,
     /^\/api\/tenant\/status\b/,
+    /^\/api\/tenant\/me\b/,
+    /^\/api\/tenant\/subscribe\b/,
     /^\/api\/notifications\b/,
+    /^\/api\/plans\b/,
+    /^\/api\/coupons\/validate\b/,
 ];
 
 const isWhitelisted = (url) => WHITELIST.some(re => re.test(url));
 
 const checkPlanApproved = async (req, res, next) => {
     try {
-        // 1. Super admin bypasses entirely
         if (req.user?.role === 'superAdmin') return next();
-
-        // 2. Clients are sandboxed via auth.middleware already
         if (req.user?.role === 'client') return next();
-
-        // 3. Whitelisted routes pass through
         if (isWhitelisted(req.originalUrl)) return next();
-
-        // 4. Safety: if tenantId missing (shouldn't happen for admin/staff), allow
         if (!req.tenantId) {
             logger.warn(`[planApproval] No tenantId on req for ${req.originalUrl} — allowing through`);
             return next();
         }
 
-        // 5. Look up tenant
-        const tenant = await Tenant.findById(req.tenantId).select('planStatus planName orgName');
+        const tenant = await Tenant.findById(req.tenantId)
+            .select('planStatus planName orgName isOnTrial trialEndDate trialStartDate');
 
-        // 6. If tenant missing somehow, fail-open (don't trap user — let other
-        //    middleware raise a proper error)
         if (!tenant) {
             logger.warn(`[planApproval] Tenant ${req.tenantId} not found — allowing through`);
             return next();
         }
 
-        // 7. Backward compat: missing planStatus = legacy tenant = active
         const status = tenant.planStatus || 'active';
+
+        // Trial: check if still within trial period
+        if (status === 'trial') {
+            if (tenant.isOnTrial && tenant.trialEndDate) {
+                if (new Date() <= tenant.trialEndDate) {
+                    return next(); // Still in valid trial
+                }
+                // Trial expired — update status
+                tenant.planStatus = 'trial_expired';
+                tenant.isOnTrial = false;
+                await tenant.save();
+                // Fall through to blocked response
+            }
+        }
+
         if (status === 'active') return next();
 
-        // 8. Blocked — respond with 403 (NOT 404) and structured payload
+        const messages = {
+            trial_expired: 'Your 7-day free trial has expired. Please subscribe to continue.',
+            pending: 'Your plan is awaiting Super Admin approval.',
+            rejected: 'Your plan request was rejected. Please contact support.',
+            suspended: 'Your account is currently suspended. Please contact support.',
+        };
+
         return res.status(403).json({
             success: false,
-            message:
-                status === 'pending' ? 'Your plan is awaiting Super Admin approval. You will be notified by email once approved.' :
-                    status === 'rejected' ? 'Your plan request was rejected. Please contact support.' :
-                        'Your account is currently suspended. Please contact support.',
+            message: messages[status] || 'Account access restricted. Please contact support.',
             data: {
                 blocked: true,
-                planStatus: status,
+                planStatus: tenant.planStatus,
                 planName: tenant.planName,
                 orgName: tenant.orgName,
+                trialEndDate: tenant.trialEndDate,
+                trialStartDate: tenant.trialStartDate,
             },
         });
     } catch (err) {
         logger.error(`[planApproval] Error: ${err.message}`);
-        // Fail-open on unexpected errors — don't lock users out
         return next();
     }
 };

@@ -1,3 +1,6 @@
+
+
+
 const audit = require('../utils/audit');
 const Domain = require('../models/Domain.model');
 const { Notification } = require('../models/index');
@@ -75,7 +78,8 @@ exports.addDomain = async (req, res, next) => {
     await domain.populate('clientId', 'name email');
     await domain.populate('hostingId', 'label serverIP planType');
 
-    await Notification.create({ source: 'system',
+    await Notification.create({
+      source: 'system',
       tenantId: req.tenantId, type: 'info',
       title: 'New Domain Added',
       message: `Domain ${domain.name} has been added successfully.`,
@@ -176,6 +180,14 @@ exports.deleteDomain = async (req, res, next) => {
     }
     const domain = await Domain.findOneAndDelete({ _id: req.params.id, tenantId: req.tenantId });
     if (!domain) return error(res, 'Domain not found', 404);
+
+    // Delete all related notifications/alerts for this domain
+    await Notification.deleteMany({
+      tenantId: req.tenantId,
+      entityId: domain._id,
+      entityType: 'domain',
+    });
+
     audit.log(req, 'domain.delete', 'domain', domain._id, { name: domain.name });
     return success(res, {}, 'Domain deleted');
   } catch (err) { next(err); }
@@ -335,7 +347,7 @@ exports.importDomainsEnhanced = async (req, res, next) => {
       .on('error', (streamErr) => {
         if (responded) return;
         responded = true;
-        if (fs.existsSync(req.file.path)) { try { fs.unlinkSync(req.file.path); } catch (_) {} }
+        if (fs.existsSync(req.file.path)) { try { fs.unlinkSync(req.file.path); } catch (_) { } }
         next(streamErr);
       })
       .on('end', async () => {
@@ -381,7 +393,7 @@ exports.importDomainsEnhanced = async (req, res, next) => {
           }
         }
 
-        if (fs.existsSync(req.file.path)) { try { fs.unlinkSync(req.file.path); } catch (_) {} }
+        if (fs.existsSync(req.file.path)) { try { fs.unlinkSync(req.file.path); } catch (_) { } }
         return success(res, {
           imported: created.length,
           updated: updated.length,
@@ -390,4 +402,3 @@ exports.importDomainsEnhanced = async (req, res, next) => {
       });
   } catch (err) { next(err); }
 };
-

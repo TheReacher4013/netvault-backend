@@ -58,9 +58,13 @@ exports.addHosting = async (req, res, next) => {
 // @GET /api/hosting/:id
 exports.getHostingById = async (req, res, next) => {
   try {
+    const mongoose = require('mongoose');
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return error(res, 'Invalid hosting ID', 400);
+    }
     const hosting = await Hosting.findOne({ _id: req.params.id, tenantId: req.tenantId })
       .populate('clientId', 'name email phone');
-    if (!hosting) return error(res, 'Hosting not found', 404);
+    if (!hosting) return error(res, 'Hosting record not found', 404);
     return success(res, { hosting: safeHosting(hosting) });
   } catch (err) { next(err); }
 };
@@ -91,10 +95,25 @@ exports.updateHosting = async (req, res, next) => {
 // @DELETE /api/hosting/:id
 exports.deleteHosting = async (req, res, next) => {
   try {
+    const mongoose = require('mongoose');
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return error(res, 'Invalid hosting ID', 400);
+    }
     const hosting = await Hosting.findOneAndDelete({ _id: req.params.id, tenantId: req.tenantId });
     if (!hosting) return error(res, 'Hosting not found', 404);
-    audit.log(req, 'hosting.delete', 'hosting', null, {});
-    return success(res, {}, 'Hosting deleted');
+
+    // Delete all related notifications/alerts for this hosting
+    await Notification.deleteMany({
+      tenantId: req.tenantId,
+      entityId: hosting._id,
+      entityType: 'hosting',
+    });
+
+    // Also delete uptime logs
+    await UptimeLog.deleteMany({ hostingId: hosting._id });
+
+    audit.log(req, 'hosting.delete', 'hosting', null, { label: hosting.label });
+    return success(res, {}, 'Hosting deleted successfully');
   } catch (err) { next(err); }
 };
 

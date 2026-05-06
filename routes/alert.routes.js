@@ -6,6 +6,8 @@ const ctrl = require('../controllers/notification.controller');
 router.use(protect);
 router.get('/', ctrl.getAlerts);
 router.patch('/read-all', ctrl.markAllAlertsRead);
+// new cleanup route
+router.delete('/cleanup', ctrl.cleanupOrphanedAlerts);
 router.patch('/:id/read', ctrl.markAlertRead);
 router.delete('/:id', ctrl.deleteAlert);
 

@@ -1,6 +1,7 @@
 const Notification = require('../models/Notification.model');
 const { success, error } = require('../utils/apiResponse');
-
+const Hosting = require('../models/Hosting.model');
+const Domain = require('../models/Domain.model');
 
 const buildAlertQuery = (req, extra = {}) => {
   const base = { source: 'system', ...extra };
@@ -8,10 +9,48 @@ const buildAlertQuery = (req, extra = {}) => {
   return { ...base, tenantId: req.tenantId };
 };
 
+const cleanOrphanedAlerts = async (tenantId) => {
+  try {
+
+    const alerts = await Notification.find({
+      source: 'system',
+      tenantId,
+      entityId: { $exists: true, $ne: null },
+    }).select('_id entityId entityType');
+
+    const toDelete = [];
+
+    for (const alert of alerts) {
+      if (alert.entityType === 'hosting') {
+        const exists = await Hosting.exists({ _id: alert.entityId, tenantId });
+        if (!exists) toDelete.push(alert._id);
+      } else if (alert.entityType === 'domain') {
+        const exists = await Domain.exists({ _id: alert.entityId, tenantId });
+        if (!exists) toDelete.push(alert._id);
+      }
+    }
+
+    if (toDelete.length > 0) {
+      await Notification.deleteMany({ _id: { $in: toDelete } });
+    }
+    return toDelete.length;
+  } catch (e) {
+    // Don't block main request on cleanup error
+    console.warn('[cleanOrphanedAlerts]', e.message);
+    return 0;
+  }
+};
+
 // @GET /api/alerts
 exports.getAlerts = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, read } = req.query;
+
+    // Clean up orphaned alerts for this tenant first
+    if (req.tenantId) {
+      await cleanOrphanedAlerts(req.tenantId);
+    }
+
     const query = buildAlertQuery(req);
     if (read === 'true') query.read = true;
     if (read === 'false') query.read = false;
@@ -62,10 +101,16 @@ exports.deleteAlert = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// @DELETE /api/alerts/cleanup — Manual cleanup of orphaned alerts
+exports.cleanupOrphanedAlerts = async (req, res, next) => {
+  try {
+    const deleted = await cleanOrphanedAlerts(req.tenantId);
+    return success(res, { deleted }, `Cleaned up ${deleted} orphaned alert(s)`);
+  } catch (err) { next(err); }
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BROADCAST NOTIFICATIONS  (source: 'broadcast')
-// Admin/SuperAdmin creates these; read state tracked per-user via readBy[].
+// BROADCAST NOTIFICATIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
 const buildNotifQuery = (req, extra = {}) => {
@@ -80,7 +125,6 @@ const buildNotifQuery = (req, extra = {}) => {
   };
 };
 
-// @POST /api/notifications — superAdmin only
 exports.createNotification = async (req, res, next) => {
   try {
     if (req.user?.role !== 'superAdmin') return error(res, 'Forbidden', 403);
@@ -95,7 +139,6 @@ exports.createNotification = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// @PUT /api/notifications/:id — superAdmin only
 exports.updateNotification = async (req, res, next) => {
   try {
     if (req.user?.role !== 'superAdmin') return error(res, 'Forbidden', 403);
@@ -110,7 +153,6 @@ exports.updateNotification = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// @GET /api/notifications
 exports.getNotifications = async (req, res, next) => {
   try {
     const { page = 1, limit = 50 } = req.query;
@@ -138,7 +180,6 @@ exports.getNotifications = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// @PATCH /api/notifications/:id/read
 exports.markRead = async (req, res, next) => {
   try {
     await Notification.findOneAndUpdate(
@@ -149,7 +190,6 @@ exports.markRead = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// @PATCH /api/notifications/read-all
 exports.markAllRead = async (req, res, next) => {
   try {
     const query = buildNotifQuery(req);
@@ -158,7 +198,6 @@ exports.markAllRead = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// @DELETE /api/notifications/:id — superAdmin only
 exports.deleteNotification = async (req, res, next) => {
   try {
     if (req.user?.role !== 'superAdmin') return error(res, 'Forbidden', 403);

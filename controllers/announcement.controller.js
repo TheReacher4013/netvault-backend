@@ -1,3 +1,4 @@
+
 const Announcement = require('../models/Announcement.model');
 const User = require('../models/User.model');
 const mailer = require('../services/mailer.service');
@@ -81,9 +82,10 @@ exports.getAnnouncementById = async (req, res) => {
 // POST /api/announcements — superAdmin only
 exports.createAnnouncement = async (req, res) => {
   try {
-    const { title, content, priority, status, targetRoles, expiresAt } = req.body;
+    const { title, content, priority, status, targetRoles, expiresAt, customization } = req.body;
     const announcement = await Announcement.create({
       title, content, priority, status, targetRoles, expiresAt,
+      customization,
       createdBy: req.user._id,
       publishedAt: status === 'published' ? new Date() : undefined,
     });
@@ -159,3 +161,6 @@ exports.publishAnnouncement = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+
+

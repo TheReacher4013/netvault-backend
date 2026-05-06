@@ -6,8 +6,6 @@ const protect = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate.middleware');
 
 router.post('/register', [
-  body('orgName').notEmpty().withMessage('Organisation name required'),
-  body('name').notEmpty().withMessage('Name required'),
   body('email').isEmail().withMessage('Valid email required'),
   body('password').isLength({ min: 6 }).withMessage('Password min 6 chars'),
 ], validate, ctrl.register);
