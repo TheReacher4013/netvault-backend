@@ -5,7 +5,6 @@ const Hosting = require('../models/Hosting.model');
 const { Client, Invoice, ReportEmailSchedule } = require('../models/index');
 const { success, error } = require('../utils/apiResponse');
 
-
 exports.getSuperAdminSummary = async (req, res, next) => {
   try {
     if (req.user?.role !== 'superAdmin') return error(res, 'Forbidden', 403);
@@ -16,7 +15,6 @@ exports.getSuperAdminSummary = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    // Aggregate per-tenant counts in one pass
     const tenantIds = tenants.map(t => t._id);
 
     const [domainCounts, hostingCounts, clientCounts, userCounts, invoiceCounts] = await Promise.all([

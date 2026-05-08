@@ -1,7 +1,6 @@
 const Tenant = require('../models/Tenant.model');
 const { success, error } = require('../utils/apiResponse');
 
-// @GET /api/tenant/me  — Get current tenant info
 exports.getMyTenant = async (req, res, next) => {
     try {
         const tenant = await Tenant.findById(req.tenantId)
@@ -12,7 +11,7 @@ exports.getMyTenant = async (req, res, next) => {
     } catch (err) { next(err); }
 };
 
-// @PUT /api/tenant/me  — Update own company settings (admin only)
+
 exports.updateMyTenant = async (req, res, next) => {
     try {
         if (req.user.role !== 'admin') {
@@ -25,7 +24,6 @@ exports.updateMyTenant = async (req, res, next) => {
             settings,
         } = req.body;
 
-        // Check if profile looks complete enough to mark profileCompleted
         const profileCompleted = !!(orgName && phone && (website || address));
 
         const tenant = await Tenant.findByIdAndUpdate(
@@ -44,7 +42,6 @@ exports.updateMyTenant = async (req, res, next) => {
     } catch (err) { next(err); }
 };
 
-// @POST /api/tenant/me/logo — Upload company logo
 exports.uploadLogo = async (req, res, next) => {
     try {
         if (!req.file) return require('../utils/apiResponse').error(res, 'No file uploaded', 400);

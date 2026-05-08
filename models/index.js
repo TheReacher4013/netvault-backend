@@ -56,9 +56,7 @@ ClientSchema.plugin(mongoosePaginate);
 
 const Client = mongoose.model('Client', ClientSchema);
 
-// ── Everything below is UNCHANGED from your existing models/index.js ────────
 
-// ── Invoice ──────────────────────────────────────────────────────────────
 const InvoiceItemSchema = new mongoose.Schema({
   description: { type: String, required: true },
   type: { type: String, enum: ['domain', 'hosting', 'ssl', 'service', 'other'], default: 'service' },
@@ -92,7 +90,6 @@ InvoiceSchema.index({ clientId: 1 });
 InvoiceSchema.plugin(mongoosePaginate);
 const Invoice = mongoose.model('Invoice', InvoiceSchema);
 
-// ── Credential (Encrypted Vault) ─────────────────────────────────────────
 const { encryptData, decryptData } = require('../services/encrypt.service');
 
 const CredentialSchema = new mongoose.Schema({
@@ -121,11 +118,11 @@ CredentialSchema.set('toObject', { virtuals: true });
 CredentialSchema.index({ tenantId: 1, clientId: 1 });
 const Credential = mongoose.model('Credential', CredentialSchema);
 
-// ── Notification ──────────────────────────────────────────────────────────
+
 const NotificationSchema = new mongoose.Schema({
   tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: false },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  // 'system' = auto-generated alert (cron/events), 'broadcast' = admin-sent to roles
+
   source: { type: String, enum: ['system', 'broadcast'], default: 'system' },
   type: {
     type: String,
@@ -137,14 +134,14 @@ const NotificationSchema = new mongoose.Schema({
   entityId: { type: mongoose.Schema.Types.ObjectId },
   entityType: { type: String, enum: ['domain', 'hosting', 'client', 'invoice', 'user'] },
   severity: { type: String, enum: ['info', 'warning', 'danger', 'success'], default: 'info' },
-  // Optional explicit front-end route to navigate to on click (e.g. '/domains/abc123')
+
   actionUrl: { type: String, default: null },
-  // For system alerts: simple boolean read flag per-tenant scope
+
   read: { type: Boolean, default: false },
   readAt: { type: Date },
-  // For broadcast notifications: per-user read tracking
+  
   readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  // Broadcast-only fields
+  
   targetRoles: [{ type: String }],
   targetUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   isGlobal: { type: Boolean, default: false },
@@ -155,7 +152,7 @@ NotificationSchema.index({ tenantId: 1, read: 1 });
 NotificationSchema.index({ createdAt: -1 });
 const Notification = mongoose.model('Notification', NotificationSchema);
 
-// ── UptimeLog ─────────────────────────────────────────────────────────────
+
 const UptimeLogSchema = new mongoose.Schema({
   hostingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Hosting', required: true },
   tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true },
@@ -170,7 +167,7 @@ UptimeLogSchema.index({ hostingId: 1, checkedAt: -1 });
 UptimeLogSchema.index({ tenantId: 1 });
 const UptimeLog = mongoose.model('UptimeLog', UptimeLogSchema);
 
-// ── Plan ──────────────────────────────────────────────────────────────────
+
 const PlanSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
   displayName: { type: String, required: true },
@@ -185,20 +182,17 @@ const PlanSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
   isPopular: { type: Boolean, default: false },
   trialDays: { type: Number, default: 7 },
-  // Countries this plan is available for (empty = all countries)
+ 
   availableCountries: [{ type: String }],
 }, { timestamps: true });
 
 const Plan = mongoose.model('Plan', PlanSchema);
 
-
-// ── ReportEmailSchedule ───────────────────────────────────────────────────────
-// Stores email recipients for daily scheduled report delivery
 const ReportEmailScheduleSchema = new mongoose.Schema({
-  tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', default: null }, // null = superAdmin global
+  tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', default: null }, 
   scope: { type: String, enum: ['superAdmin', 'admin'], required: true },
   emails: [{ type: String, trim: true, lowercase: true }],
-  sendTime: { type: String, default: '18:00' }, // HH:MM 24h format
+  sendTime: { type: String, default: '18:00' }, 
   timezone: { type: String, default: 'Asia/Kolkata' },
   enabled: { type: Boolean, default: true },
   lastSentAt: { type: Date },
@@ -206,5 +200,14 @@ const ReportEmailScheduleSchema = new mongoose.Schema({
 
 ReportEmailScheduleSchema.index({ tenantId: 1, scope: 1 }, { unique: true });
 const ReportEmailSchedule = mongoose.model('ReportEmailSchedule', ReportEmailScheduleSchema);
+
+//new razor ch ahe lakshat thev rushikesh
+
+const Payment = require('./Payment.model');
+
+module.exports = {
+  Client, Invoice, Credential, Notification, UptimeLog, Plan, ReportEmailSchedule,
+  Payment,
+};
 
 module.exports = { Client, Invoice, Credential, Notification, UptimeLog, Plan, ReportEmailSchedule };

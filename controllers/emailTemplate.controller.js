@@ -1,13 +1,7 @@
 const EmailTemplate = require('../models/EmailTemplate.model');
 const { success, error } = require('../utils/apiResponse');
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Render an email template from DB.
- * Replaces {{variable}} placeholders with values from `vars`.
- * Falls back to hardcoded defaults if template is not found in DB.
- */
 exports.renderTemplate = async (templateId, vars = {}) => {
     const t = await EmailTemplate.findOne({ templateId });
     if (!t) throw new Error(`Email template not found: ${templateId}`);

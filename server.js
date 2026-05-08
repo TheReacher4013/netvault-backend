@@ -36,7 +36,9 @@ const plansRoutes = require('./routes/plans.routes');
 const otpRoutes = require('./routes/otp.routes');
 const chatRoutes = require('./routes/chat.routes');
 const couponRoutes = require('./routes/coupon.routes');
-const emailTemplateRoutes = require('./routes/emailTemplate.routes')
+const emailTemplateRoutes = require('./routes/emailTemplate.routes');
+// ── NEW: Razorpay payment routes ─────────────────────────────────────────────
+const paymentRoutes = require('./routes/payment.routes');
 
 const app = express();
 const server = http.createServer(app);
@@ -113,6 +115,16 @@ const chatLimiter = rateLimit({
   message: { success: false, message: 'Too many chat requests, please slow down.' },
 });
 
+// ── Razorpay webhook needs raw body for signature verification ────────────────
+app.use('/api/payments/webhook', express.raw({ type: 'application/json' }), (req, res, next) => {
+  if (Buffer.isBuffer(req.body)) {
+    req.rawBody = req.body.toString('utf8');
+    try { req.body = JSON.parse(req.rawBody); } catch (e) { req.body = {}; }
+  }
+  next();
+}, require('./controllers/razorpay.controller').handleWebhook);
+
+// All other routes use JSON body parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -133,6 +145,8 @@ app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/client-portal', clientPortalRoutes);
 app.use('/api/chat', chatLimiter, chatRoutes);
 app.use('/api', couponRoutes);  // /api/coupons + /api/referrals
+// ── Payment routes (no checkPlanApproved — they must work even when trial expired)
+app.use('/api/payments', paymentRoutes);
 app.use('/api/domains', checkPlanApproved, domainRoutes);
 app.use('/api/hosting', checkPlanApproved, hostingRoutes);
 app.use('/api/clients', checkPlanApproved, clientRoutes);

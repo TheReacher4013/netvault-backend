@@ -1,7 +1,3 @@
-
-
-
-
 const Tenant = require('../models/Tenant.model');
 const User = require('../models/User.model');
 const { Plan } = require('../models/index');
@@ -10,11 +6,11 @@ const { success, error } = require('../utils/apiResponse');
 const audit = require('../utils/audit');
 const logger = require('../utils/logger');
 
-// @GET /api/super-admin/pending-tenants — Shows trial + pending companies
+
 exports.getPendingTenants = async (req, res, next) => {
     try {
         const tenants = await Tenant.find({
-            planStatus: { $in: ['pending', 'trial', 'trial_expired'] }
+            planStatus: { $in: ['trial', 'trial_expired'] }
         })
             .populate('adminId', 'name email phone')
             .populate('planId', 'displayName price')

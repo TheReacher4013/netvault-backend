@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const OtpTokenSchema = new mongoose.Schema({
     email: { type: String, required: true, lowercase: true, trim: true, index: true },
-    codeHash: { type: String, required: true },   // bcrypt hash of the 6-digit code
+    codeHash: { type: String, required: true },  
     purpose: { type: String, enum: ['register', 'email-change'], default: 'register' },
     attempts: { type: Number, default: 0 },
     verified: { type: Boolean, default: false },

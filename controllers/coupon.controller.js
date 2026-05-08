@@ -1,6 +1,3 @@
-
-
-
 const { Coupon, Referral } = require('../models/coupon.model');
 const Tenant = require('../models/Tenant.model');
 const { success, error } = require('../utils/apiResponse');

@@ -11,7 +11,6 @@ const MAX_ATTEMPTS = 5;
 
 const generateCode = () => String(crypto.randomInt(100000, 1000000)); // 6 digits
 
-// ── POST /api/otp/send ───────
 exports.sendOtp = async (req, res, next) => {
     try {
         const rawEmail = (req.body.email || '').trim().toLowerCase();

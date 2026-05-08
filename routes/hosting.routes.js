@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const protect = require('../middleware/auth.middleware');
 const checkRole = require('../middleware/role.middleware');
-const { checkHostingLimit } = require('../middleware/planLimit.middleware'); // ← NEW
+const { checkHostingLimit } = require('../middleware/planLimit.middleware'); 
 const ctrl = require('../controllers/hosting.controller');
 
 router.use(protect);

@@ -37,25 +37,34 @@ const checkPlanApproved = async (req, res, next) => {
 
         const status = tenant.planStatus || 'active';
 
-        // Trial: check if still within trial period
+        // Active — full access
+        if (status === 'active') return next();
+
+        // Pending — no approval flow anymore, treat as trial fallback
+        if (status === 'pending') return next();
+
+        // Trial — check if still within trial period
         if (status === 'trial') {
             if (tenant.isOnTrial && tenant.trialEndDate) {
                 if (new Date() <= tenant.trialEndDate) {
                     return next(); // Still in valid trial
                 }
-                // Trial expired — update status
+                // Trial expired — update status in DB but still allow through
+                // Frontend SubscriptionModal handles the payment wall
                 tenant.planStatus = 'trial_expired';
                 tenant.isOnTrial = false;
                 await tenant.save();
-                // Fall through to blocked response
             }
+            // Even if trial expired, allow API through — frontend modal gates the UI
+            return next();
         }
 
-        if (status === 'active') return next();
+        // Trial expired (already set in DB from a previous request)
+        // Allow through — frontend SubscriptionModal is the payment wall
+        if (status === 'trial_expired') return next();
 
+        // Only truly block: rejected or suspended
         const messages = {
-            trial_expired: 'Your 7-day free trial has expired. Please subscribe to continue.',
-            pending: 'Your plan is awaiting Super Admin approval.',
             rejected: 'Your plan request was rejected. Please contact support.',
             suspended: 'Your account is currently suspended. Please contact support.',
         };

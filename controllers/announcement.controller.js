@@ -1,4 +1,3 @@
-
 const Announcement = require('../models/Announcement.model');
 const User = require('../models/User.model');
 const mailer = require('../services/mailer.service');

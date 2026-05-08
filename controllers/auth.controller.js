@@ -202,9 +202,7 @@ exports.register = async (req, res, next) => {
       } : null,
       planStatus,
     },
-      planStatus === 'pending'
-        ? 'Registration successful. Your plan is pending Super Admin approval.'
-        : 'Registration successful',
+      'Registration successful. Your 7-day free trial has started.',
       201);
   } catch (err) {
     next(err);

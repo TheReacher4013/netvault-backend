@@ -1,5 +1,3 @@
-
-
 const { Plan } = require('../models/index');
 const { success } = require('../utils/apiResponse');
 

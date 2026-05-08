@@ -8,24 +8,17 @@ const { Client, Invoice, ReportEmailSchedule } = require('../models/index');
 const mailer = require('../services/mailer.service');
 const logger = require('../utils/logger');
 
-
-
-
 function getTodayRangeIST() {
   const now = new Date();
   // Get "YYYY-MM-DD" in IST
   const istStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-  const [y, m, d] = istStr.split('-').map(Number);
-
- 
+  const [y, m, d] = istStr.split('-').map(Number); 
   const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
   const todayStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0) - IST_OFFSET_MS);
   const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
 
   return { todayStart, todayEnd };
 }
-
-
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-IN');
 const fmtMoney = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });

@@ -238,3 +238,111 @@ exports.sendAnnouncementEmail = async (email, name, title, content, priority) =>
   });
   await sendMail(email, subject, html);
 };
+
+
+
+exports.sendPaymentConfirmationEmail = async (
+  email,
+  name,
+  orgName,
+  planName,
+  amount,
+  currency = 'INR',
+  paymentId
+) => {
+  const currencySymbol = currency === 'INR' ? '₹' : currency === 'USD' ? '$' : currency;
+  const subject = `✅ Payment Confirmed — ${planName} Plan Activated`;
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Confirmation</title>
+</head>
+<body style="margin:0;padding:0;background:#f6f7fb;font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
+  <div style="max-width:580px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+    
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:36px 32px;text-align:center;">
+      <h1 style="color:#fff;margin:0;font-size:26px;font-weight:700;">NetVault</h1>
+      <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:14px;">Domain & Hosting Management</p>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:36px 32px;">
+      <div style="text-align:center;margin-bottom:28px;">
+        <div style="width:64px;height:64px;border-radius:50%;background:#d1fae5;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;">
+          <span style="font-size:32px;">✅</span>
+        </div>
+        <h2 style="margin:0;color:#111827;font-size:22px;font-weight:700;">Payment Successful!</h2>
+        <p style="margin:8px 0 0;color:#6b7280;font-size:15px;">Your subscription has been activated.</p>
+      </div>
+
+      <p style="color:#374151;font-size:15px;line-height:1.6;">Hi <strong>${name}</strong>,</p>
+      <p style="color:#374151;font-size:15px;line-height:1.6;">
+        Great news! Your payment for <strong>${orgName}</strong> has been processed successfully and your 
+        <strong>${planName}</strong> plan is now active.
+      </p>
+
+      <!-- Payment Details -->
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin:24px 0;">
+        <h3 style="margin:0 0 16px;color:#111827;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">
+          Payment Details
+        </h3>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr style="border-bottom:1px solid #e5e7eb;">
+            <td style="padding:8px 0;color:#6b7280;font-size:14px;">Plan</td>
+            <td style="padding:8px 0;color:#111827;font-size:14px;font-weight:600;text-align:right;">${planName}</td>
+          </tr>
+          <tr style="border-bottom:1px solid #e5e7eb;">
+            <td style="padding:8px 0;color:#6b7280;font-size:14px;">Amount Paid</td>
+            <td style="padding:8px 0;color:#059669;font-size:14px;font-weight:600;text-align:right;">${currencySymbol}${amount}</td>
+          </tr>
+          <tr style="border-bottom:1px solid #e5e7eb;">
+            <td style="padding:8px 0;color:#6b7280;font-size:14px;">Payment ID</td>
+            <td style="padding:8px 0;color:#111827;font-size:12px;font-family:monospace;text-align:right;">${paymentId}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:#6b7280;font-size:14px;">Status</td>
+            <td style="padding:8px 0;text-align:right;">
+              <span style="background:#d1fae5;color:#059669;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;">Confirmed</span>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <p style="color:#374151;font-size:15px;line-height:1.6;">
+        You now have full access to all features in your plan. Log in to your NetVault dashboard to get started.
+      </p>
+
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}" 
+           style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px;display:inline-block;">
+          Go to Dashboard →
+        </a>
+      </div>
+
+      <p style="color:#9ca3af;font-size:13px;line-height:1.6;">
+        If you have any questions, please contact our support team. Keep your Payment ID safe for reference.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 32px;text-align:center;">
+      <p style="margin:0;color:#9ca3af;font-size:12px;">
+        © ${new Date().getFullYear()} NetVault. All rights reserved.
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+
+  await transporter.sendMail({
+    from: process.env.MAIL_FROM || 'NetVault <noreply@netvault.app>',
+    to: email,
+    subject,
+    html,
+  });
+};

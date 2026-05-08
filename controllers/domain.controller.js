@@ -1,6 +1,3 @@
-
-
-
 const audit = require('../utils/audit');
 const Domain = require('../models/Domain.model');
 const { Notification } = require('../models/index');
