@@ -37,7 +37,7 @@ const otpRoutes = require('./routes/otp.routes');
 const chatRoutes = require('./routes/chat.routes');
 const couponRoutes = require('./routes/coupon.routes');
 const emailTemplateRoutes = require('./routes/emailTemplate.routes');
-// ── NEW: Razorpay payment routes ─────────────────────────────────────────────
+// ── NEW: Razorpay payment routes ───
 const paymentRoutes = require('./routes/payment.routes');
 
 const app = express();
@@ -95,15 +95,16 @@ app.use(cors({
 app.options('*', cors());
 
 const limiter = rateLimit({
-  windowMs: 30 * 90 * 4000,
-  max: 600,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000,                 // 1000 requests per 15 min per IP (enough for dashboard polling)
   message: { success: false, message: 'Too many requests, please try again later.' },
+  skip: (req) => req.method === 'OPTIONS', // skip preflight requests
 });
 app.use('/api/', limiter);
 
 const authLimiter = rateLimit({
-  windowMs: 40 * 90 * 3000,
-  max: process.env.NODE_ENV === 'production' ? 40 : 800,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: process.env.NODE_ENV === 'production' ? 20 : 100, // 20 login attempts per 15 min
   message: { success: false, message: 'Too many auth attempts, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
