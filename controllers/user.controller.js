@@ -1,6 +1,8 @@
 const User = require('../models/User.model');
 const { success, error } = require('../utils/apiResponse');
 const audit = require('../utils/audit');
+const mailer = require('../services/mailer.service');
+const Tenant = require('../models/Tenant.model');
 
 // @GET /api/users
 exports.getUsers = async (req, res, next) => {
@@ -31,6 +33,18 @@ exports.addUser = async (req, res, next) => {
     });
 
     audit.log(req, 'user.create', 'user', user._id, { email, role: user.role });
+
+    // Send welcome email with login credentials
+    try {
+      const tenant = await Tenant.findById(req.tenantId).select('orgName').lean();
+      const agencyName = tenant?.orgName || 'NetVault';
+      const plainPassword = password || 'ChangeMe@123';
+      await mailer.sendUserCreatedEmail(email, name, email, plainPassword, agencyName);
+    } catch (mailErr) {
+      // Email failure should not block user creation
+      const logger = require('../utils/logger');
+      logger.error(`User created email failed for ${email}: ${mailErr.message}`);
+    }
 
     return success(res, {
       user: { _id: user._id, name: user.name, email: user.email, role: user.role },

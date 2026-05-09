@@ -195,15 +195,29 @@ exports.sendInvoiceEmail = async (email, name, invoiceNo, total, dueDate, pdfPat
   }
 };
 
+// ── NEW: User created by admin — sends login credentials ──────────────────────
+exports.sendUserCreatedEmail = async (email, userName, userEmail, userPassword, agencyName) => {
+  const { html, subject } = await renderTemplate('user-created', {
+    userName,
+    userEmail,
+    userPassword,
+    agencyName,
+    dashboardUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard`,
+  });
+  await sendMail(email, subject, html);
+};
+
 exports.sendClientInvite = async (email, clientName, agencyName, inviteUrl) => {
   const { html, subject } = await renderTemplate('invite', { clientName, agencyName, inviteUrl });
   await sendMail(email, subject, html);
 };
 
-exports.sendClientPortalWelcome = async (email, clientName, agencyName) => {
+exports.sendClientPortalWelcome = async (email, clientName, agencyName, password) => {
   const { html, subject } = await renderTemplate('portal-welcome', {
     clientName, agencyName,
     loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`,
+    clientEmail: email,
+    clientPassword: password || '',
   });
   await sendMail(email, subject, html);
 };
@@ -238,8 +252,6 @@ exports.sendAnnouncementEmail = async (email, name, title, content, priority) =>
   });
   await sendMail(email, subject, html);
 };
-
-
 
 exports.sendPaymentConfirmationEmail = async (
   email,
@@ -339,6 +351,7 @@ exports.sendPaymentConfirmationEmail = async (
 </html>
   `;
 
+  const transporter = getTransporter();
   await transporter.sendMail({
     from: process.env.MAIL_FROM || 'NetVault <noreply@netvault.app>',
     to: email,

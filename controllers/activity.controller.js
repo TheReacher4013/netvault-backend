@@ -11,6 +11,9 @@ exports.getLogs = async (req, res, next) => {
             query.tenantId = req.tenantId;
         } else if (req.query.tenantId) {
             query.tenantId = req.query.tenantId;
+        } else {
+            // SuperAdmin ke apne logs (tenantId: null) exclude karo
+            query.tenantId = { $ne: null };
         }
 
         if (action) query.action = action;

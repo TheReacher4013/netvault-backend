@@ -1,4 +1,6 @@
 const express = require('express');
+const multer = require('multer');
+const upload = multer({ dest: 'uploads/csv/' });
 const router = express.Router();
 const protect = require('../middleware/auth.middleware');
 const checkRole = require('../middleware/role.middleware');
@@ -8,6 +10,7 @@ const ctrl = require('../controllers/hosting.controller');
 router.use(protect);
 
 router.get('/stats', ctrl.getHostingStats);
+router.get('/export-csv', ctrl.exportHostingCSV);
 router.get('/', ctrl.getHosting);
 router.post('/', checkHostingLimit, ctrl.addHosting);  // ← limit enforced
 

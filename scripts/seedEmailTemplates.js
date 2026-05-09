@@ -134,10 +134,22 @@ const DEFAULTS = [
         subject: 'Welcome to your {{agencyName}} client portal',
         headerTitle: 'NetVault', headerSub: 'Welcome to your client portal',
         greeting: 'Hi {{clientName}},',
-        body: '{{agencyName}} has given you access to the NetVault client portal.',
-        highlight: 'You can now log in to view your domains, hosting, invoices, and alerts.',
+        body: '{{agencyName}} has given you access to the NetVault client portal. Your login credentials are below — please keep them safe.',
+        highlight: '📧 Email: {{clientEmail}}\n🔑 Password: {{clientPassword}}',
         btnText: 'Go to Login', btnUrl: '{{loginUrl}}',
         footer: 'NetVault — Client Portal',
+        hdrColor: '#0D2B1F', hdrTxtColor: '#6EE7B7', hlColor: '#2ECC8A', hlBg: '#F0FBF5',
+        btnColor: '#2ECC8A', btnTxtColor: '#050F0A', footerBg: '#F9FAFB', footerTxt: '#9CA3AF',
+    },
+    {
+        templateId: 'user-created', name: 'User created by admin', tag: 'On user add',
+        subject: 'Your {{agencyName}} account has been created',
+        headerTitle: 'NetVault', headerSub: 'Account Created',
+        greeting: 'Hi {{userName}},',
+        body: 'An account has been created for you on the {{agencyName}} NetVault dashboard. Use the credentials below to log in.',
+        highlight: '📧 Email: {{userEmail}}\n🔑 Password: {{userPassword}}',
+        btnText: 'Go to Dashboard', btnUrl: '{{dashboardUrl}}',
+        footer: 'NetVault — Team Access',
         hdrColor: '#0D2B1F', hdrTxtColor: '#6EE7B7', hlColor: '#2ECC8A', hlBg: '#F0FBF5',
         btnColor: '#2ECC8A', btnTxtColor: '#050F0A', footerBg: '#F9FAFB', footerTxt: '#9CA3AF',
     },
@@ -205,4 +217,9 @@ async function seed() {
     process.exit(0);
 }
 
-seed().catch(err => { console.error(err); process.exit(1); });
+// Only run seed() when this script is executed directly (not when required as a module)
+if (require.main === module) {
+    seed().catch(err => { console.error(err); process.exit(1); });
+}
+
+module.exports = { DEFAULTS };

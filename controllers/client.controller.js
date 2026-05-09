@@ -63,7 +63,7 @@ exports.addClient = async (req, res, next) => {
         portalAccess = true;
 
         // Send welcome-to-portal email (best-effort)
-        mailerService.sendClientPortalWelcome?.(email, name, req.user?.name).catch(e =>
+        mailerService.sendClientPortalWelcome?.(email, name, req.user?.name, password).catch(e =>
           logger.warn(`Client portal welcome email failed: ${e.message}`)
         );
       } catch (userErr) {
@@ -73,7 +73,8 @@ exports.addClient = async (req, res, next) => {
       }
     }
 
-    await Notification.create({ source: 'system',
+    await Notification.create({
+      source: 'system',
       tenantId: req.tenantId,
       type: 'new_client',
       title: 'New Client Added',

@@ -6,14 +6,11 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const { Server } = require('socket.io');
 require('dotenv').config();
-
 const connectDB = require('./config/db');
 const logger = require('./utils/logger');
 const errorMiddleware = require('./middleware/error.middleware');
 const { setIO } = require('./utils/socket');
-
 const checkPlanApproved = require('./middleware/planApproval.middleware');
-
 const authRoutes = require('./routes/auth.routes');
 const domainRoutes = require('./routes/domain.routes');
 const hostingRoutes = require('./routes/hosting.routes');
@@ -37,9 +34,7 @@ const otpRoutes = require('./routes/otp.routes');
 const chatRoutes = require('./routes/chat.routes');
 const couponRoutes = require('./routes/coupon.routes');
 const emailTemplateRoutes = require('./routes/emailTemplate.routes');
-// ── NEW: Razorpay payment routes ───
 const paymentRoutes = require('./routes/payment.routes');
-
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -116,7 +111,7 @@ const chatLimiter = rateLimit({
   message: { success: false, message: 'Too many chat requests, please slow down.' },
 });
 
-// ── Razorpay webhook needs raw body for signature verification ────────────────
+// ── Razorpay webhook needs raw body for signature verification ───
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }), (req, res, next) => {
   if (Buffer.isBuffer(req.body)) {
     req.rawBody = req.body.toString('utf8');

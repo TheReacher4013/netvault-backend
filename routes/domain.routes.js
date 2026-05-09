@@ -16,6 +16,7 @@ router.get('/', ctrl.getDomains);
 
 
 router.post('/', checkDomainLimit, ctrl.addDomain);
+router.get('/export-csv', ctrl.exportDomainsCSV);
 router.post('/import-csv', checkRole('admin'), upload.single('file'), ctrl.importDomainsCSV);
 
 router.get('/:id', ctrl.getDomain);
